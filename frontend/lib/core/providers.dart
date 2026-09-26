@@ -48,6 +48,12 @@ class SearchController extends AsyncNotifier<List<TorrentResult>> {
   }
 }
 
+/// Suggestions tab ([ApiClient.suggestions]): fetched once per page-load, and
+/// again when the tab's refresh button invalidates it.
+final suggestionsProvider = FutureProvider<List<FilmSuggestion>>(
+  (ref) => ref.watch(apiClientProvider).suggestions(),
+);
+
 /// Library: polls the backend every 2 s so progress bars animate live.
 final libraryProvider = StreamProvider<List<TorrentState>>((ref) async* {
   final api = ref.watch(apiClientProvider);

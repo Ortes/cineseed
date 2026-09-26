@@ -10,6 +10,8 @@ import 'tracker_connector.dart';
 /// exposing a Torznab feed directly.
 ///
 /// - search:   `GET {base}/api?t=search&q=<q>&apikey=<key>` → RSS
+/// - latest:   `GET {base}/api?t=search&cat=2000&limit=<n>&offset=<i>` → RSS
+///   (no `q`: the feed of the newest uploads in Movies)
 /// - download: `GET {base}/api?t=get&id=<infoHash>&apikey=<key>` → .torrent bytes
 ///   (`t=get` returns a ready-to-add .torrent — no cookie, no CAPTCHA, fully
 ///   automatable.)
@@ -35,6 +37,33 @@ class TorznabTracker implements TrackerConnector {
       throw Exception('Tracker search failed: HTTP ${res.statusCode}');
     }
     return _parseRss(res.body);
+  }
+
+  @override
+  Future<List<TorrentResult>> latestMovies(int count) async {
+    final byHash = <String, TorrentResult>{};
+    // An indexer serves at most its own page size whatever `limit` asks, so
+    // page with `offset` until [count] are in. A page that adds nothing new is
+    // the end of the feed (or an indexer that ignores `offset`).
+    while (byHash.length < count) {
+      final res = await _http.get(
+        _api({
+          't': 'search',
+          'cat': '2000',
+          'limit': '${count - byHash.length}',
+          'offset': '${byHash.length}',
+        }),
+      );
+      if (res.statusCode != 200) {
+        throw Exception('Tracker latest failed: HTTP ${res.statusCode}');
+      }
+      final before = byHash.length;
+      for (final r in _parseRss(res.body)) {
+        byHash.putIfAbsent(r.infoHash, () => r);
+      }
+      if (byHash.length == before) break;
+    }
+    return byHash.values.take(count).toList();
   }
 
   @override

@@ -8,7 +8,8 @@ class TmdbMovie {
   final String? backdropUrl;
   final String? releaseDate; // YYYY-MM-DD
   final int? runtime; // minutes
-  final double? voteAverage;
+  final double? voteAverage; // 0–10; TMDB reports 0 when nobody voted
+  final int? voteCount;
   final List<String> genres;
 
   const TmdbMovie({
@@ -21,6 +22,7 @@ class TmdbMovie {
     this.releaseDate,
     this.runtime,
     this.voteAverage,
+    this.voteCount,
     this.genres = const [],
   });
 
@@ -34,6 +36,7 @@ class TmdbMovie {
     'releaseDate': releaseDate,
     'runtime': runtime,
     'voteAverage': voteAverage,
+    'voteCount': voteCount,
     'genres': genres,
   };
 
@@ -47,10 +50,14 @@ class TmdbMovie {
     releaseDate: json['releaseDate'] as String?,
     runtime: (json['runtime'] as num?)?.toInt(),
     voteAverage: (json['voteAverage'] as num?)?.toDouble(),
+    voteCount: (json['voteCount'] as num?)?.toInt(),
     genres: ((json['genres'] as List?) ?? const [])
         .map((e) => e as String)
         .toList(),
   );
+
+  /// The TMDB rating, or null when nobody has voted yet (TMDB then reports 0).
+  double? get rating => (voteCount ?? 0) > 0 ? voteAverage : null;
 
   /// Release year parsed from [releaseDate], if any.
   int? get year {

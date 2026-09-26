@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ## [Unreleased]
 
 ### Added
+- Suggestions tab: the films among the tracker's latest 100 movie releases, best TMDB
+  rating first (`GET /api/suggestions`). Film cards now show the TMDB rating and vote count.
 - In-app playback while downloading: the player starts seconds after a download does,
   streaming HLS from the local copy (only verified pieces are read), and switches to S3
   without a restart once the file is uploaded and freed.

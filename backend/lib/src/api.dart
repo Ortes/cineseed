@@ -12,6 +12,7 @@ import 'torrent/local_file.dart';
 import 'torrent/stream_id.dart';
 import 'torrent/torrent_client.dart';
 import 'torrent/torrent_local_file.dart';
+import 'tracker/suggestions.dart';
 import 'tracker/tmdb_client.dart';
 import 'tracker/tracker_connector.dart';
 
@@ -99,6 +100,16 @@ String _contentTypeFor(String name) {
       type: req.url.queryParameters['type'],
     );
     return _json(results.map((e) => e.toJson()).toList());
+  });
+
+  // Suggestions: the films among the tracker's latest 100 movie releases, best
+  // TMDB rating first. 404 without TMDB — the rating comes from there.
+  r.get('/suggestions', (Request req) async {
+    if (tmdb == null) {
+      return _json({'error': 'tmdb disabled (set TMDB_API_KEY)'}, 404);
+    }
+    final films = await latestByRating(tracker, tmdb.movie);
+    return _json(films.map((f) => f.toJson()).toList());
   });
 
   // Raw .torrent bytes (mostly internal/debug).

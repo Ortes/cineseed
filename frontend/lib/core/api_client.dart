@@ -57,6 +57,15 @@ class ApiClient {
         .toList();
   }
 
+  /// The films among the tracker's latest movie releases, best TMDB rating
+  /// first.
+  Future<List<FilmSuggestion>> suggestions() async {
+    final res = await _dio.get('/api/suggestions');
+    return (res.data as List)
+        .map((e) => FilmSuggestion.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
   Future<void> addTorrent(String infoHash) =>
       _dio.post('/api/torrents', data: {'hash': infoHash});
 

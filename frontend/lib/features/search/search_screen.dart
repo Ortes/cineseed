@@ -172,18 +172,10 @@ class _FilmsList extends ConsumerWidget {
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           sliver: SliverGrid(
-            // ~180 px cells. Poster (2:3) = 180×270. Below: title + year +
-            // chip row (quality / languages). 180/0.48 ≈ 375 total → ~105 px
-            // for the text block. Keeps a 4K/HQ + VF/MULTI/VOSTFR chip row.
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 180,
-              mainAxisSpacing: 18,
-              crossAxisSpacing: 14,
-              childAspectRatio: 0.48,
-            ),
+            gridDelegate: filmGridDelegate,
             delegate: SliverChildBuilderDelegate((context, i) {
               final e = entries[i];
-              return _FilmGridCell(
+              return FilmGridCell(
                 mediaType: e.key.$1,
                 tmdbId: e.key.$2,
                 releases: e.value,
@@ -200,25 +192,41 @@ class _FilmsList extends ConsumerWidget {
   static int _max(int a, int b) => a > b ? a : b;
 }
 
-/// One poster cell in the search grid. Poster image on top (TMDB), title,
-/// year and a chip row (quality + audio/subs languages) underneath.
-class _FilmGridCell extends HookConsumerWidget {
-  const _FilmGridCell({
+/// Grid of [FilmGridCell]s. ~180 px cells. Poster (2:3) = 180×270. Below:
+/// title + year + chip row (quality / languages). 180/0.48 ≈ 375 total →
+/// ~105 px for the text block. Keeps a 4K/HQ + VF/MULTI/VOSTFR chip row.
+const filmGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
+  maxCrossAxisExtent: 180,
+  mainAxisSpacing: 18,
+  crossAxisSpacing: 14,
+  childAspectRatio: 0.48,
+);
+
+/// One poster cell in a film grid. Poster image on top (TMDB), title, year,
+/// rating and a chip row (quality + audio/subs languages) underneath.
+class FilmGridCell extends HookConsumerWidget {
+  const FilmGridCell({
+    super.key,
     required this.mediaType,
     required this.tmdbId,
     required this.releases,
+    this.movie,
   });
   final MediaType mediaType;
   final int tmdbId;
   final List<TorrentResult> releases;
 
+  /// TMDB metadata the caller already has; fetched by [tmdbId] when null.
+  final TmdbMovie? movie;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hover = useState(false);
     final theme = Theme.of(context);
-    final movie = ref
-        .watch(tmdbTitleProvider((type: mediaType, id: tmdbId)))
-        .value;
+    final movie =
+        this.movie ??
+        ref.watch(tmdbTitleProvider((type: mediaType, id: tmdbId))).value;
+    final rating = movie?.rating;
 
     // Fall back to the parsed release title until TMDB loads (or if it 404s).
     final canonical = ([
@@ -325,9 +333,31 @@ class _FilmGridCell extends HookConsumerWidget {
                           height: 1.15,
                         ),
                       ),
-                      if (year != null)
-                        Text(
-                          '$year',
+                      if (year != null || rating != null)
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              if (year != null) TextSpan(text: '$year'),
+                              if (year != null && rating != null)
+                                const TextSpan(text: '  '),
+                              if (rating != null) ...[
+                                // An icon: the web font has no ★ glyph.
+                                const WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Icon(
+                                    Icons.star_rounded,
+                                    size: 14,
+                                    color: Colors.amber,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: ' ${rating.toStringAsFixed(1)}',
+                                  style: const TextStyle(color: Colors.amber),
+                                ),
+                                TextSpan(text: ' (${movie!.voteCount})'),
+                              ],
+                            ],
+                          ),
                           maxLines: 1,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,

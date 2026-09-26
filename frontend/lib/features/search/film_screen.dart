@@ -9,9 +9,9 @@ import 'format_helpers.dart';
 import 'release_row.dart';
 import 'search_sort.dart';
 
-/// Detail page for one film: lists every release in the current search whose
-/// `tmdbId` matches. Pulled from the live `searchProvider` so we don't need to
-/// re-issue the query.
+/// Detail page for one film: lists every release in the current search or the
+/// suggestions whose `tmdbId` matches. Pulled from the live providers so we
+/// don't need to re-issue the query.
 class FilmScreen extends HookConsumerWidget {
   const FilmScreen({super.key, required this.mediaType, required this.tmdbId});
 
@@ -32,13 +32,17 @@ class FilmScreen extends HookConsumerWidget {
       }
     }
 
-    final search = ref.watch(searchProvider);
-    final releases = search.maybeWhen(
-      data: (list) => list
-          .where((r) => r.tmdbId == tmdbId && r.mediaType == mediaType)
-          .toList(),
-      orElse: () => const <TorrentResult>[],
-    );
+    // `exists`: opening a film from search mustn't fetch the suggestions.
+    final suggested = ref.exists(suggestionsProvider)
+        ? ref.watch(suggestionsProvider).value
+        : null;
+    final releases = {
+      for (final r in [
+        ...?ref.watch(searchProvider).value,
+        ...?suggested?.expand((s) => s.releases),
+      ])
+        if (r.tmdbId == tmdbId && r.mediaType == mediaType) r.infoHash: r,
+    }.values.toList();
     final movie = ref
         .watch(tmdbTitleProvider((type: mediaType, id: tmdbId)))
         .value;

@@ -2,6 +2,7 @@
 /// frontend so the wire format never drifts.
 library;
 
+export 'src/models/film_suggestion.dart';
 export 'src/models/media_type.dart';
 export 'src/models/torrent_files.dart';
 export 'src/models/torrent_result.dart';

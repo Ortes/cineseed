@@ -10,6 +10,7 @@ import '../player/cast_button.dart';
 import '../player/stream_actions.dart';
 import '../search/format_helpers.dart';
 import '../search/search_screen.dart';
+import '../suggestions/suggestions_view.dart';
 
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
@@ -17,7 +18,7 @@ class LibraryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: CineseedColors.background,
         appBar: AppBar(
@@ -40,10 +41,13 @@ class LibraryScreen extends StatelessWidget {
             tabs: [
               Tab(text: 'Library', icon: Icon(Icons.video_library_outlined)),
               Tab(text: 'Search', icon: Icon(Icons.search_rounded)),
+              Tab(text: 'Suggestions', icon: Icon(Icons.star_outline_rounded)),
             ],
           ),
         ),
-        body: const TabBarView(children: [_LibraryTab(), SearchView()]),
+        body: const TabBarView(
+          children: [_LibraryTab(), SearchView(), SuggestionsView()],
+        ),
       ),
     );
   }

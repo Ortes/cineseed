@@ -71,6 +71,7 @@ class TmdbClient {
       releaseDate: j[dateKey] as String?,
       runtime: (j['runtime'] as num?)?.toInt(),
       voteAverage: (j['vote_average'] as num?)?.toDouble(),
+      voteCount: (j['vote_count'] as num?)?.toInt(),
       genres: ((j['genres'] as List?) ?? const [])
           .map((g) => (g as Map)['name'] as String)
           .toList(),
