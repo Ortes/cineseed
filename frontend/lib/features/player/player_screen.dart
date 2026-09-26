@@ -378,7 +378,10 @@ class PlayerScreen extends HookConsumerWidget {
       appBar: fullscreen.value
           ? null
           : AppBar(
-              title: Text(heading.isEmpty ? 'Watch' : heading),
+              title: SelectableText(
+                heading.isEmpty ? 'Watch' : heading,
+                maxLines: 1,
+              ),
               actions: [
                 if (chewie.value != null)
                   CastButton(
