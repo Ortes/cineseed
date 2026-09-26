@@ -1,0 +1,27 @@
+name: cineseed_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+# One resolution + one pubspec.lock for every package. The frontend is a
+# Flutter package, so resolve with `flutter pub get` (plain `dart pub get`
+# fails without the Flutter SDK).
+workspace:
+  - shared
+  - backend
+  - frontend
+
+# Forks adding HLS subtitle + audio-track selection (branch feat/audio-tracks).
+# Pinned to commits for reproducible builds. For local fast iteration, swap a
+# given entry for a `path:` dependency on a local checkout of the fork.
+# A package may be overridden only once per workspace, so all overrides live here.
+dependency_overrides:
+  chewie:
+    git:
+      url: https://github.com/Ortes/chewie.git
+      ref: 92c0f425a9370df26dae73dd19e0dce63e08fd6b
+  video_player_web_hls:
+    git:
+      url: https://github.com/Ortes/video_player_web_hls.git
+      ref: c847972c1426ad90d9da34d8c4991290a634dd38

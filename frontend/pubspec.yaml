@@ -19,7 +19,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ^3.8.0
+resolution: workspace
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -52,18 +53,8 @@ dependencies:
   web: ^1.0.0
   url_launcher: ^6.3.1
 
-# Forks adding HLS subtitle + audio-track selection (branch feat/audio-tracks).
-# Pinned to commits for reproducible builds. For local fast iteration, swap a
-# given entry for a `path:` dependency on a local checkout of the fork.
-dependency_overrides:
-  chewie:
-    git:
-      url: https://github.com/Ortes/chewie.git
-      ref: 92c0f425a9370df26dae73dd19e0dce63e08fd6b
-  video_player_web_hls:
-    git:
-      url: https://github.com/Ortes/video_player_web_hls.git
-      ref: c847972c1426ad90d9da34d8c4991290a634dd38
+# chewie / video_player_web_hls are overridden with forks in the root
+# pubspec.yaml (workspace-wide overrides live there).
 
 dev_dependencies:
   flutter_test:
