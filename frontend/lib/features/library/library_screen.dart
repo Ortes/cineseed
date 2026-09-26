@@ -373,9 +373,10 @@ class _TorrentTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = torrent;
-    // VLC copy-link works as soon as any bytes have landed (sequential
-    // download fills the file front-to-back). In-app playback / Cast /
-    // download need the file on S3 (`onS3`) — that's the real gate.
+    // In-app playback and the VLC copy-link work as soon as any bytes have
+    // landed (sequential download fills the file front-to-back; the player
+    // waits for the first pieces). Cast and download need the file on S3
+    // (`onS3`).
     final hasBytes = t.percentDone > 0;
     // Stranded first: such a torrent is also 100% done and not on S3, so it
     // would otherwise read as "uploading" forever — an upload that can never
@@ -390,7 +391,7 @@ class _TorrentTile extends ConsumerWidget {
         : finalizing
         ? 'Uploading to S3…  ${(t.uploadProgress * 100).toStringAsFixed(0)} %'
         : '${(t.percentDone * 100).toStringAsFixed(1)} %  ·  '
-              '${hasBytes ? 'playable in VLC while downloading' : 'starting…'}';
+              '${hasBytes ? 'playable while downloading' : 'starting…'}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -400,8 +401,7 @@ class _TorrentTile extends ConsumerWidget {
           // Always tappable: /watch resolves to the player for a single-video
           // torrent and to the file list for a season pack, and the file list
           // is worth reaching mid-download — it is where the per-episode
-          // progress and VLC links live. The play button below stays gated on
-          // S3, so this doesn't promise playback that isn't ready.
+          // progress and VLC links live.
           onTap: () {
             ref.read(userInitiatedPlaybackProvider.notifier).mark();
             context.push('/watch/${t.hashString}');
@@ -529,20 +529,17 @@ class _TorrentTile extends ConsumerWidget {
                         ? () => downloadFile(context, ref, t.hashString)
                         : null,
                   ),
-                  // In-app playback streams live HLS off S3 — disabled until the
-                  // file is on S3 (otherwise the player only shows "downloading").
+                  // In-app playback: live HLS off S3 once the file is there,
+                  // else off the local copy while it downloads.
                   IconButton(
-                    tooltip: t.onS3
-                        ? 'Play in browser'
-                        : finalizing
-                        ? 'Available once the upload to S3 finishes'
-                        : 'Available once the download finishes — use the copy '
-                              'button for VLC',
+                    tooltip: stranded
+                        ? 'Files missing — re-download to recover'
+                        : 'Play in browser',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                    color: t.onS3
-                        ? CineseedColors.cream
-                        : CineseedColors.creamMuted.withValues(alpha: 0.4),
-                    onPressed: t.onS3
+                    color: stranded
+                        ? CineseedColors.creamMuted.withValues(alpha: 0.4)
+                        : CineseedColors.cream,
+                    onPressed: !stranded
                         ? () {
                             ref
                                 .read(userInitiatedPlaybackProvider.notifier)

@@ -4,13 +4,14 @@ import '../storage/s3_signer.dart';
 import '../torrent/local_file.dart';
 import '../torrent/stream_id.dart';
 import '../torrent/torrent_client.dart';
+import '../torrent/torrent_local_file.dart';
 
 /// Resolves a stream id — `<hash>` or `<hash>.<index>` (see [StreamId]) — to
-/// its file, once the file is finished. Per FILE: a season pack finishes (and
-/// uploads) one episode at a time, so E01 is playable while the rest aren't.
+/// its file. Per FILE: each episode of a season pack is its own source.
 ///
-/// With S3 ([signer] set) the source is the file's object, and only once it
-/// has actually landed there. Without S3 it is the file on the local disk.
+/// With S3 ([signer] set), a finished file whose object has landed there plays
+/// from S3. Otherwise it plays from the local disk as soon as it is there, even
+/// mid-download: [TorrentLocalFile] only lets reads through verified pieces.
 class TorrentMediaResolver implements MediaSourceResolver {
   TorrentMediaResolver({
     required this.client,
@@ -26,7 +27,8 @@ class TorrentMediaResolver implements MediaSourceResolver {
   /// Lifetime of the presigned URLs [S3Signer.presign] hands out.
   final Duration ttl;
 
-  /// Local lookup (see [localFileOf]) when there is no S3.
+  /// Local lookup (see [localPathsOf]). With S3 it is the post-upload dir (an
+  /// rclone mount of the bucket), which is never read as a local file.
   final String downloadDir;
   final String incompleteDir;
 
@@ -39,23 +41,28 @@ class TorrentMediaResolver implements MediaSourceResolver {
     final index = sid.resolve(info.files);
     if (index == null) return null; // no such file in this torrent
     final file = info.files[index];
-    if (info.percentDone < 1.0) return null;
 
     final signer = this.signer;
-    if (signer == null) {
-      final local = localFileOf(
-        info,
-        file,
-        fallbackDir: downloadDir,
-        incompleteDir: incompleteDir,
+    if (signer != null &&
+        info.percentDone >= 1.0 &&
+        await signer.exists(file.name)) {
+      return HttpMediaSource(
+        await signer.presign(file.name), // name == S3 key
+        label: file.name,
+        expiresAt: DateTime.now().add(ttl),
       );
-      return local == null ? null : FileMediaSource(local.path);
     }
-    if (!await signer.exists(file.name)) return null;
-    return HttpMediaSource(
-      await signer.presign(file.name), // name == S3 key
-      label: file.name,
-      expiresAt: DateTime.now().add(ttl),
+    final local = TorrentLocalFile.find(
+      client,
+      sid.hash,
+      info,
+      index,
+      fallbackDir: downloadDir,
+      incompleteDir: incompleteDir,
+      remoteDir: signer == null ? null : downloadDir,
     );
+    return local == null
+        ? null
+        : FileMediaSource.of(local, label: local.path() ?? file.name);
   }
 }

@@ -294,12 +294,12 @@ class HlsSessionManager {
     // ones.
     final url = switch (source) {
       HttpMediaSource(:final url) => proxy.register(id, url),
-      FileMediaSource(:final path) =>
+      FileMediaSource(:final file) =>
         (localFiles ??
                 (throw StateError(
                   'FileMediaSource for $id but no LocalRangeServer given',
                 )))
-            .register(id, path),
+            .register(id, file, fallback: () => _remoteUrl(id)),
     };
 
     // probe + Cues are independent reads → run concurrently. Both also warm the
@@ -347,6 +347,21 @@ class HlsSessionManager {
     );
     onReady?.call(session); // pre-warm video init (fire-and-forget)
     return session;
+  }
+
+  /// Where a session on a local file reads once that file is gone (uploaded,
+  /// then freed): the resolver's remote source, through the proxy. The file
+  /// server redirects ffmpeg here, so playback carries on without a restart.
+  Future<String?> _remoteUrl(String id) async {
+    final source = await resolver.resolve(id);
+    if (source is! HttpMediaSource) {
+      Log.w('hls', '$id: local file gone and no remote source ($source)');
+      return null;
+    }
+    final url = proxy.register(id, source.url);
+    _cache[id]?.sourceExpiresAt = source.expiresAt; // keep it refreshed
+    Log.d('hls', '$id: local file gone, now reading ${source.label}');
+    return url;
   }
 
   void _evictExpired() {

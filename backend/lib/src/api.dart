@@ -11,6 +11,7 @@ import 'storage/s3_offloader.dart';
 import 'torrent/local_file.dart';
 import 'torrent/stream_id.dart';
 import 'torrent/torrent_client.dart';
+import 'torrent/torrent_local_file.dart';
 import 'tracker/tmdb_client.dart';
 import 'tracker/tracker_connector.dart';
 
@@ -218,6 +219,40 @@ String _contentTypeFor(String name) {
     return (info, info.files[index]);
   }
 
+  // Whether the in-app player can start on the local copy of [id]'s file:
+  // building its HLS session reads the header (first piece) and the Cues,
+  // which mkvmerge puts in the last piece. Transmission fetches a file's first
+  // and last pieces before anything else, so this holds seconds after a
+  // download starts.
+  Future<bool> playableLocally(String id, TorrentStreamInfo info) async {
+    final sid = StreamId.parse(id)!;
+    final local = TorrentLocalFile.find(
+      client,
+      sid.hash,
+      info,
+      sid.resolve(info.files)!,
+      fallbackDir: downloadDir,
+      incompleteDir: incompleteDir,
+      remoteDir: offload?.postUploadDir,
+    );
+    return local != null &&
+        await local.readable(0) > 0 &&
+        await local.readable(local.length - 1) > 0;
+  }
+
+  // A missing HLS session, init or segment while the file is still
+  // downloading means "not downloaded that far yet": a 503, which hls.js
+  // retries (it never retries a 4xx). Once the file is complete, [otherwise].
+  Future<Response> unlessDownloading(String id, Response otherwise) async {
+    final resolved = await resolveFile(id);
+    final downloading =
+        resolved != null && resolved.$2.bytesCompleted < resolved.$2.length;
+    return downloading ? _json({'error': 'still downloading'}, 503) : otherwise;
+  }
+
+  Future<Response> notReadyForHls(String id) =>
+      unlessDownloading(id, _json({'error': 'not ready for HLS'}, 409));
+
   // Stream: hybrid. If the download is finished the object is on S3 → hand the
   // browser a presigned URL (fast, offloads the server). Until the object lands
   // on S3 (still downloading, or finished but not yet uploaded) → hand back the
@@ -238,8 +273,8 @@ String _contentTypeFor(String name) {
     // presigned URL before the object lands → 404. So only go S3 once the
     // object actually exists; otherwise keep serving the local copy.
     //
-    // `ready` is the in-app (HLS) playback gate, same as `onS3` on /torrents:
-    // finished, and on S3 when S3 is configured.
+    // `ready` is the in-app (HLS) playback gate: on S3, or else enough of the
+    // local copy is there to build the HLS session (see [playableLocally]).
     final finished = info.percentDone >= 1.0;
     if (offload != null && finished && await offload.fileOnS3(file.name)) {
       final url = await offload.signer.presign(file.name); // name == S3 key
@@ -258,7 +293,7 @@ String _contentTypeFor(String name) {
     return _json({
       'url': localUrl,
       'mode': 'local',
-      'ready': offload == null && finished,
+      'ready': await playableLocally(id, info),
       'percentDone': info.percentDone,
     });
   });
@@ -377,8 +412,9 @@ String _contentTypeFor(String name) {
   // ---- Live HLS (multi-audio + subtitles + Dolby→AAC) --------------------
   // The in-app player streams via these routes. Segments are generated on
   // demand from the presigned S3 URL — no pre-transcode, no stored segments.
-  // Only eligible once the file is finished + on S3 + has a usable MKV index;
-  // otherwise these return 409 (the player shows "still downloading").
+  // Served from S3 once the file has landed there, else from the local copy as
+  // it downloads (see `TorrentMediaResolver`); needs a usable MKV index.
+  // Otherwise 409, or 503 while the file is still downloading.
   //
   // `<id>` is a stream id (`<hash>` or `<hash>.<fileIndex>`, see [StreamId]) and
   // is also the HLS session key, so each episode of a season pack gets its own
@@ -393,7 +429,7 @@ String _contentTypeFor(String name) {
   // switch audio (hls.js loadSource swap).
   r.get('/hls/<id>/master.m3u8', (Request req, String id) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     await segments.videoInit(s); // populate codec string for the master CODECS
     final a = int.tryParse(req.url.queryParameters['a'] ?? '');
     return _m3u8(HlsPlaylists.master(s, audioOrder: a));
@@ -404,7 +440,7 @@ String _contentTypeFor(String name) {
   // reads it here and switches by reloading the master with `?a=<order>`.
   r.get('/hls/<id>/audio-tracks', (Request req, String id) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     return _json([
       for (final a in s.probe.audio)
         {
@@ -427,7 +463,7 @@ String _contentTypeFor(String name) {
     String t,
   ) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     return _m3u8(HlsPlaylists.muxedMedia(s));
   });
   r.get('/hls/<id>/m/<t|[0-9]+>/init.mp4', (
@@ -436,9 +472,11 @@ String _contentTypeFor(String name) {
     String t,
   ) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     final bytes = await segments.muxedInit(s, int.parse(t));
-    if (bytes == null) return Response.notFound('no init');
+    if (bytes == null) {
+      return unlessDownloading(id, Response.notFound('no init'));
+    }
     return _mp4(bytes);
   });
   r.get('/hls/<id>/m/<t|[0-9]+>/<seg|[0-9]+>.m4s', (
@@ -448,11 +486,11 @@ String _contentTypeFor(String name) {
     String seg,
   ) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     final mux = await segments.muxedSegment(s, int.parse(t), int.parse(seg));
     if (mux == null) {
-      Log.d('req', 'm/$t/$seg.m4s → 404 (timeout/out-of-range)');
-      return Response.notFound('no segment');
+      Log.d('req', 'm/$t/$seg.m4s → no segment (timeout/out-of-range)');
+      return unlessDownloading(id, Response.notFound('no segment'));
     }
     Log.d('req', 'm/$t/$seg.m4s → 200 ${mux.total}B (streamed)');
     // Streamed from disk, not buffered: the length is known from the parts'
@@ -475,7 +513,7 @@ String _contentTypeFor(String name) {
     String t,
   ) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     return _m3u8(HlsPlaylists.subtitleMedia(s));
   });
   r.get('/hls/<id>/s/<t|[0-9]+>/<seg|[0-9]+>.vtt', (
@@ -485,9 +523,11 @@ String _contentTypeFor(String name) {
     String seg,
   ) async {
     final s = await hls.get(id);
-    if (s == null) return _json({'error': 'not ready for HLS'}, 409);
+    if (s == null) return notReadyForHls(id);
     final vtt = await segments.vttSegment(s, int.parse(t), int.parse(seg));
-    if (vtt == null) return Response.notFound('no subtitle');
+    if (vtt == null) {
+      return unlessDownloading(id, Response.notFound('no subtitle'));
+    }
     return Response.ok(
       vtt,
       headers: {

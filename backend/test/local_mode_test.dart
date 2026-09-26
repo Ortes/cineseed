@@ -1,18 +1,25 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cineseed_backend/cineseed_backend.dart';
 import 'package:test/test.dart';
 
-/// One finished single-file torrent at [dir]/film.mkv.
-class _Finished implements TorrentClient {
-  _Finished(this.dir, this.length);
+/// One single-file torrent at [dir]/film.mkv: finished, unless [missing]
+/// lists pieces not downloaded yet.
+class _OneFile implements TorrentClient {
+  _OneFile(this.dir, this.length);
   final String dir;
   final int length;
+  static const pieceSize = 16 << 10;
+  Set<int> missing = {};
+
+  int get pieceCount => (length + pieceSize - 1) ~/ pieceSize;
+  double get _done => missing.isEmpty ? 1.0 : 0.5;
 
   @override
   Future<List<TorrentState>> list() async => [
-    const TorrentState(hashString: 'h1', name: 'film.mkv', percentDone: 1.0),
+    TorrentState(hashString: 'h1', name: 'film.mkv', percentDone: _done),
   ];
   @override
   Future<TorrentStreamInfo?> streamInfo(String hash) async => hash != 'h1'
@@ -20,10 +27,25 @@ class _Finished implements TorrentClient {
       : TorrentStreamInfo(
           name: 'film.mkv',
           downloadDir: dir,
-          percentDone: 1.0,
+          percentDone: _done,
           isFinished: false,
-          files: [TorrentFile('film.mkv', length, length)],
+          files: [
+            TorrentFile(
+              'film.mkv',
+              length,
+              missing.isEmpty ? length : length ~/ 2,
+            ),
+          ],
         );
+  @override
+  Future<TorrentPieces?> pieces(String hash) async {
+    final bits = Uint8List((pieceCount + 7) ~/ 8);
+    for (var i = 0; i < pieceCount; i++) {
+      if (!missing.contains(i)) bits[i >> 3] |= 0x80 >> (i & 7);
+    }
+    return TorrentPieces(bits, pieceSize);
+  }
+
   @override
   Future<List<TorrentFile>> files(String hash) async => [];
   @override
@@ -84,6 +106,7 @@ void main() {
     late Directory dir;
     late File mkv;
     late CineseedServer server;
+    late _OneFile client;
     late String base;
     final http = HttpClient();
 
@@ -98,10 +121,8 @@ void main() {
             .split(' '),
       );
       if (r.exitCode != 0) fail('ffmpeg: ${r.stderr}');
-      server = await startServer(
-        Config.fromEnv(_env()),
-        client: _Finished(dir.path, mkv.lengthSync()),
-      );
+      client = _OneFile(dir.path, mkv.lengthSync());
+      server = await startServer(Config.fromEnv(_env()), client: client);
       base = 'http://127.0.0.1:${server.http.port}/api';
     });
 
@@ -132,6 +153,16 @@ void main() {
       expect(s['mode'], 'local');
       expect(s['ready'], isTrue); // the in-app player's gate
       expect(s['url'], endsWith('/api/file/h1'));
+    });
+
+    test('mid-download, the player may start once the first and last pieces '
+        'are in', () async {
+      final middle = {for (var i = 1; i < client.pieceCount - 1; i++) i};
+      addTearDown(() => client.missing = {});
+      client.missing = {...middle, client.pieceCount - 1};
+      expect((await json('$base/stream/h1') as Map)['ready'], isFalse);
+      client.missing = middle;
+      expect((await json('$base/stream/h1') as Map)['ready'], isTrue);
     });
 
     test('download is the whole file as an attachment', () async {

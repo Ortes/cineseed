@@ -161,6 +161,22 @@ class TransmissionClient implements TorrentClient {
   }
 
   @override
+  Future<TorrentPieces?> pieces(String hash) async {
+    final args = await _call('torrent-get', {
+      'ids': [hash],
+      'fields': ['pieces', 'pieceSize'],
+    });
+    final torrents = (args['torrents'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    if (torrents.isEmpty) return null;
+    final t = torrents.first;
+    return TorrentPieces(
+      base64Decode(t['pieces'] as String),
+      (t['pieceSize'] as num).toInt(),
+    );
+  }
+
+  @override
   Future<void> start(String hash) => _call('torrent-start', {
     'ids': [hash],
   });

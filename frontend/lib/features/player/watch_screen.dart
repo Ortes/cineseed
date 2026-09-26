@@ -149,14 +149,14 @@ class _FileTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Same gates as the library, one file down: in-app playback, Cast and
-    // download need this file on S3; the VLC link works from the first bytes,
-    // because sequential download fills each file front-to-back.
+    // Same gates as the library, one file down: in-app playback and the VLC
+    // link work from the first bytes, because sequential download fills each
+    // file front-to-back; Cast and download need this file on S3.
     //
-    // "Downloaded" is its own state, distinct from "ready": a file becomes
-    // ready only once the whole pack is downloaded, and with S3 once it is
-    // also uploaded (one file at a time) — saying "while downloading" there
-    // would misreport what it is waiting on.
+    // "Downloaded" is its own state, distinct from "ready": with S3 a file is
+    // ready once the whole pack is downloaded and it is uploaded (one file at
+    // a time) — saying "while downloading" there would misreport what it is
+    // waiting on.
     final downloaded = file.percentDone >= 1.0;
     final status = file.onS3
         ? 'Ready to stream  ·  ${fmtBytes(file.length)}'
@@ -166,7 +166,7 @@ class _FileTile extends ConsumerWidget {
               : 'Downloaded  ·  waiting for the rest of the pack'
         : file.hasBytes
         ? '${(file.percentDone * 100).toStringAsFixed(1)} %  ·  '
-              'playable in VLC while downloading'
+              'playable while downloading'
         : 'Waiting  ·  ${fmtBytes(file.length)}';
 
     void open() {
@@ -183,7 +183,7 @@ class _FileTile extends ConsumerWidget {
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: file.onS3 ? open : null,
+          onTap: file.hasBytes ? open : null,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             child: Row(
@@ -283,15 +283,10 @@ class _FileTile extends ConsumerWidget {
                         : null,
                   ),
                   IconButton(
-                    tooltip: file.onS3
-                        ? 'Play in browser'
-                        : 'Available once this file is ready — '
-                              'use the copy button for VLC',
+                    tooltip: 'Play in browser',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                    color: file.onS3
-                        ? CineseedColors.cream
-                        : CineseedColors.creamMuted.withValues(alpha: 0.4),
-                    onPressed: file.onS3 ? open : null,
+                    color: CineseedColors.cream,
+                    onPressed: open,
                   ),
                 ],
               ],

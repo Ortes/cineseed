@@ -85,9 +85,10 @@ Future<CineseedServer> startServer(
           signer: signer,
           postUploadDir: config.downloadDir,
         );
-  // Serves local files to ffmpeg for HLS when there is no S3.
-  final localFiles = signer == null ? LocalRangeServer() : null;
-  await localFiles?.start();
+  // Serves local files to ffmpeg for HLS: always without S3, and with S3
+  // until a file has landed there (it plays while downloading).
+  final localFiles = LocalRangeServer();
+  await localFiles.start();
   tmdb ??= (config.tmdbApiKey != null && config.tmdbApiKey!.isNotEmpty)
       ? TmdbClient(apiKey: config.tmdbApiKey!)
       : null;
@@ -203,6 +204,6 @@ Future<CineseedServer> startServer(
     hls.dispose();
     await producerManager.killAll();
     await proxy.stop();
-    await localFiles?.stop();
+    await localFiles.stop();
   });
 }

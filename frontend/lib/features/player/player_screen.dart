@@ -73,26 +73,27 @@ class PlayerScreen extends HookConsumerWidget {
 
       Future(() async {
         try {
-          // In-app playback goes through live HLS, which exists only once the
-          // file is ready (finished, and on S3 when S3 is configured). Until
-          // then the user opens the VLC copy-link instead.
-          final status = await ref
-              .read(apiClientProvider)
-              .streamStatus(
-                hash,
-                fileIndex: fileIndex,
-                cancelToken: cancelToken,
-              );
-          DebugLog.log(
-            'PLAYER',
-            'streamStatus mode=${status.mode} ready=${status.ready} '
-                'url=${status.url}',
-          );
-          if (!status.ready) {
-            if (!cancelled) downloading.value = true;
-            return;
-          }
+          // In-app playback goes through live HLS, which can start once the
+          // backend says `ready`: on S3, or while downloading as soon as the
+          // file's first and last pieces are in (seconds). Poll until then.
           final api = ref.read(apiClientProvider);
+          while (true) {
+            final status = await api.streamStatus(
+              hash,
+              fileIndex: fileIndex,
+              cancelToken: cancelToken,
+            );
+            DebugLog.log(
+              'PLAYER',
+              'streamStatus mode=${status.mode} ready=${status.ready} '
+                  'url=${status.url}',
+            );
+            if (cancelled) return;
+            downloading.value = !status.ready;
+            if (status.ready) break;
+            await Future<void>.delayed(const Duration(seconds: 2));
+            if (cancelled) return;
+          }
           final url = api.hlsMasterUrl(hash, fileIndex: fileIndex);
           DebugLog.log('PLAYER', 'init HLS master $url');
           vc = VideoPlayerController.networkUrl(Uri.parse(url));
@@ -340,13 +341,16 @@ class PlayerScreen extends HookConsumerWidget {
       if (downloading.value) {
         return const Padding(
           padding: EdgeInsets.all(24),
-          child: Text(
-            'Still downloading.\n\n'
-            'In-app playback streams via HLS, which is available once the file '
-            'is ready (downloaded, and uploaded when S3 is configured). While '
-            'downloading, copy the stream link from the library and open it '
-            'in VLC.',
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Waiting for the first pieces of the file…',
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         );
       }

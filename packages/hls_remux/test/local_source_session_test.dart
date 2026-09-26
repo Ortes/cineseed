@@ -16,6 +16,29 @@ class _OneFile implements MediaSourceResolver {
   }
 }
 
+/// The file on local disk until [freed], then only at [remote] — like a film
+/// uploaded to S3 and its local copy deleted.
+class _Uploaded implements MediaSourceResolver, LocalFile {
+  _Uploaded(this.local, this.remote);
+  final String local;
+  final String remote;
+  bool freed = false;
+
+  @override
+  Future<MediaSource?> resolve(String id) async => freed
+      ? HttpMediaSource(remote, label: 'remote', expiresAt: DateTime(2100))
+      : FileMediaSource.of(this, label: local);
+
+  @override
+  late final int length = File(local).lengthSync();
+
+  @override
+  String? path() => freed ? null : local;
+
+  @override
+  Future<int> readable(int offset) async => length - offset;
+}
+
 void main() {
   late Directory dir;
   late String mkv;
@@ -78,4 +101,44 @@ void main() {
     final hls = HlsSessionManager(resolver: _OneFile(mkv), proxy: proxy);
     await expectLater(hls.get('film'), throwsStateError);
   });
+
+  test(
+    'once the local file is freed, the session reads the remote copy',
+    () async {
+      final proxy = S3RangeProxy();
+      final files = LocalRangeServer();
+      final remote = LocalRangeServer(); // stands in for S3
+      await proxy.start();
+      await files.start();
+      await remote.start();
+      addTearDown(() async {
+        await proxy.stop();
+        await files.stop();
+        await remote.stop();
+      });
+      final film = _Uploaded(mkv, remote.register('obj', CompleteFile(mkv)));
+      final hls = HlsSessionManager(
+        resolver: film,
+        proxy: proxy,
+        localFiles: files,
+        targetSegmentSeconds: 2,
+      );
+      final s = (await hls.get('film'))!;
+      expect(s.sourceExpiresAt, isNull);
+
+      film.freed = true;
+      final c = HttpClient();
+      addTearDown(c.close);
+      final req = await c.getUrl(Uri.parse(s.url)); // follows the redirect
+      req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-99');
+      final res = await req.close();
+      final body = await res.fold<List<int>>([], (a, b) => a..addAll(b));
+      expect(res.redirects.single.location.port, isNot(Uri.parse(s.url).port));
+      expect(body, File(mkv).readAsBytesSync().sublist(0, 100));
+      expect(
+        s.sourceExpiresAt,
+        DateTime(2100),
+      ); // refreshed like any S3 session
+    },
+  );
 }
