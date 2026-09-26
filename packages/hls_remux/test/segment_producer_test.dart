@@ -14,10 +14,11 @@ Future<String> drain(SegmentRef r) async {
 }
 
 /// A fake "ffmpeg": parses `-hls_segment_filename <dir>/%d.m4s` and
-/// `-start_number N`, writes init.mp4 + 6 segments (atomic .tmp→rename, like
+/// `-start_number N`, records its args in `<dir>/args.txt`, writes init.mp4 + 6 segments (atomic .tmp→rename, like
 /// ffmpeg's temp_file flag) 20ms apart, then idles reading stdin until it gets
 /// `q` (graceful quit) or EOF. Respects SIGSTOP/SIGCONT naturally.
 const _mockFfmpeg = r'''#!/usr/bin/env bash
+all="$*"
 dir=""; start=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -27,6 +28,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p "$dir"
+printf '%s' "$all" > "$dir/args.txt"
 : > "$dir/init.mp4"
 i=$start
 n=$((start+6))
@@ -70,16 +72,23 @@ void main() {
 
   final boundaries = [for (var i = 0; i <= 10; i++) (i * 6).toDouble()];
 
-  Future<SegmentProducer> startAt(int seg, ProducerConfig c) =>
-      SegmentProducer.start(
-        label: 'v:h',
-        url: 'http://127.0.0.1/none',
-        boundaries: boundaries,
-        timescale: 16000,
-        startSegment: seg,
-        outputArgs: const ['-map', '0:v:0', '-c:v', 'copy'],
-        config: c,
-      );
+  Future<SegmentProducer> startAt(
+    int seg,
+    ProducerConfig c, {
+    AudioGrid? audioGrid,
+  }) => SegmentProducer.start(
+    label: 'v:h',
+    url: 'http://127.0.0.1/none',
+    boundaries: boundaries,
+    timescale: 16000,
+    startSegment: seg,
+    outputArgs: const ['-map', '0:v:0', '-c:v', 'copy'],
+    audioGrid: audioGrid,
+    config: c,
+  );
+
+  String argsOf(SegmentProducer p) =>
+      File('${p.tempPath}/args.txt').readAsStringSync();
 
   test(
     'serves produced segments and waits for not-yet-produced ones',
@@ -168,4 +177,40 @@ void main() {
       expect(p.isAlive, isFalse);
     },
   );
+
+  test('a restart warms up from an earlier keyframe it never serves', () async {
+    // 6 s boundaries, 1 s warm-up: a run for segment 3 starts at segment 2.
+    final p = await startAt(3, cfg());
+    addTearDown(p.kill);
+    expect(await drain((await p.awaitSegment(3))!), 'seg3');
+    expect(argsOf(p), contains('-start_number 2 '));
+    await Future.delayed(const Duration(milliseconds: 120)); // a scan tick
+    expect(File('${p.tempPath}/2.m4s').existsSync(), isFalse);
+    expect(p.canServe(2), isFalse);
+    expect(await p.awaitSegment(2), isNull);
+  });
+
+  test('a restart trims its audio onto the track grid', () async {
+    const grid = AudioGrid(sampleRate: 48000, origin: 0.024);
+    final p = await startAt(3, cfg(), audioGrid: grid);
+    addTearDown(p.kill);
+    await drain((await p.awaitSegment(3))!);
+    final trim = grid.sampleAtOrAfter(12.5); // run start (seg 2 = 12 s) + 0.5
+    expect(argsOf(p), contains('-af atrim=start_pts=$trim '));
+
+    final p0 = await startAt(0, cfg(), audioGrid: grid);
+    addTearDown(p0.kill);
+    await drain((await p0.awaitSegment(0))!);
+    expect(argsOf(p0), isNot(contains('atrim')), reason: 'on the grid already');
+  });
+
+  test('AudioGrid positions are grid-aligned and the first at/after t', () {
+    const grid = AudioGrid(sampleRate: 48000, origin: 0.024); // 1152 samples
+    for (final t in [0.024, 12.5, 1719.1387, 5000.0]) {
+      final s = grid.sampleAtOrAfter(t);
+      expect((s - 1152) % 1024, 0);
+      expect(s, greaterThanOrEqualTo(t * 48000));
+      expect(s - 1024, lessThan(t * 48000));
+    }
+  });
 }

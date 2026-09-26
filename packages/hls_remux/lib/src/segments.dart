@@ -7,6 +7,7 @@ import 'log.dart';
 import 'hls_session.dart';
 import 'mp4_boxes.dart';
 import 'producer_manager.dart';
+import 'segment_producer.dart';
 import 'segment_ref.dart';
 import 'transcode_pool.dart';
 
@@ -94,6 +95,7 @@ class SegmentGenerator {
       boundaries: s.producerBoundaries,
       timescale: s.videoTimescale ?? 90000,
       outputArgs: _muxedArgs(s, track),
+      audioGrid: _audioGrid(s, track),
     );
   }
 
@@ -128,6 +130,7 @@ class SegmentGenerator {
         boundaries: s.producerBoundaries,
         timescale: s.videoTimescale ?? 90000,
         outputArgs: _muxedArgs(s, track),
+        audioGrid: _audioGrid(s, track),
         i: k,
       );
       if (ref == null) {
@@ -155,6 +158,11 @@ class SegmentGenerator {
       if (isHevc) ...['-tag:v', 'hvc1'],
       ..._audioMapArgs(a.order, a),
     ];
+  }
+
+  AudioGrid _audioGrid(HlsSession s, int track) {
+    final a = s.probe.audio[track];
+    return AudioGrid(sampleRate: a.sampleRate, origin: a.startTime);
   }
 
   // --- subtitles (windowed extract, cached) ---

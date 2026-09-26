@@ -25,4 +25,4 @@ dependency_overrides:
   video_player_web_hls:
     git:
       url: https://github.com/Ortes/video_player_web_hls.git
-      ref: c847972c1426ad90d9da34d8c4991290a634dd38
+      ref: 445995698fd1b7091dae548974bbe606228ba4f3

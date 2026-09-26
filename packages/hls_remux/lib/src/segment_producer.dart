@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'log.dart';
@@ -24,6 +25,8 @@ class ProducerConfig {
   final Duration idleKillDelay; // kill after this long with no active requests
   final int
   restartReorderWindow; // serve-by-wait vs restart threshold (segments)
+  final double warmupSeconds; // a run starts at least this far before the
+  // first segment it serves — see _launch
   // Verbose debug: ffmpeg at -loglevel verbose with live stderr passthrough,
   // lifecycle logging, and segment temp dirs kept on disk (never deleted).
   final bool debug;
@@ -38,8 +41,28 @@ class ProducerConfig {
     this.segmentTimeout = const Duration(seconds: 18),
     this.idleKillDelay = const Duration(seconds: 60),
     this.restartReorderWindow = 3,
+    this.warmupSeconds = 1,
     this.debug = false,
   });
+}
+
+/// The fixed AAC frame grid of one audio track: 1024-sample frames counted
+/// from the source stream's first sample. Every producer run of the track
+/// encodes on it, so segments cut by different runs tile sample-exactly.
+class AudioGrid {
+  final int sampleRate;
+  final double origin; // source audio stream start_time (s)
+
+  const AudioGrid({required this.sampleRate, required this.origin});
+
+  static const frameSamples = 1024; // AAC-LC
+
+  /// First grid position (in 1/[sampleRate] units) at or after [t] seconds.
+  int sampleAtOrAfter(double t) {
+    final o = (origin * sampleRate).round();
+    final frames = ((t * sampleRate - o) / frameSamples).ceil();
+    return o + frames * frameSamples;
+  }
 }
 
 enum _State { running, throttled, dead }
@@ -63,8 +86,9 @@ class SegmentProducer {
   final String url; // stable loopback proxy URL
   final List<double> boundaries; // segmentCount + 1 entries
   final int timescale; // track timescale (ticks/sec)
-  final int startSegment; // playlist index ffmpeg started at
+  final int startSegment; // first segment this run serves
   final List<String> outputArgs; // -map/-c args defining the track
+  final AudioGrid? audioGrid; // set when the track carries AAC audio
   final ProducerConfig config;
 
   late final Directory _tempDir;
@@ -72,7 +96,7 @@ class SegmentProducer {
   _State _state = _State.running;
   final bool _useSetsid = Platform.isLinux;
 
-  int _highWater = -1; // highest produced segment index on disk
+  late int _highWater = startSegment - 1; // highest served-range index on disk
   int _floor = 0; // lowest segment index still on disk (pruned below this)
   int _clientSegment = 0; // last index a client asked for
   int _refCount = 0;
@@ -93,6 +117,7 @@ class SegmentProducer {
     required this.timescale,
     required this.startSegment,
     required this.outputArgs,
+    required this.audioGrid,
     required this.config,
   });
 
@@ -109,6 +134,17 @@ class SegmentProducer {
   bool canServe(int i) =>
       i >= _floor && i <= _highWater + config.restartReorderWindow;
 
+  /// The segment ffmpeg starts at: the latest boundary at least
+  /// [ProducerConfig.warmupSeconds] before [startSegment], or 0.
+  int _runStart() {
+    final target = boundaries[startSegment] - config.warmupSeconds;
+    var j = startSegment;
+    while (j > 0 && boundaries[j] > target) {
+      j--;
+    }
+    return j;
+  }
+
   static Future<SegmentProducer> start({
     required String label,
     required String url,
@@ -116,6 +152,7 @@ class SegmentProducer {
     required int timescale,
     required int startSegment,
     required List<String> outputArgs,
+    AudioGrid? audioGrid,
     required ProducerConfig config,
   }) async {
     final p = SegmentProducer._(
@@ -125,6 +162,7 @@ class SegmentProducer {
       timescale: timescale,
       startSegment: startSegment,
       outputArgs: outputArgs,
+      audioGrid: audioGrid,
       config: config,
     );
     await p._launch();
@@ -142,15 +180,35 @@ class SegmentProducer {
         );
     _floor = startSegment;
 
-    // Seek to the MIDPOINT of the target segment, not its start boundary.
+    // Start at a keyframe at least warmupSeconds before startSegment and never
+    // serve the warm-up files. A run's first fragment differs from the same
+    // fragment of a run already going: its AAC starts on the keyframe instead
+    // of ~75 ms ahead of it (the muxer interleaves audio ahead of the video by
+    // its decode delay). When the browser buffers segment N from one run and
+    // N+1 from another (a restart, or segments replayed from its HTTP cache),
+    // that audio hole is an MSE discontinuity: Chrome drops N+1's video after
+    // its keyframe, and the next open-GOP CRA's RASL frames then reference
+    // missing pictures (VideoToolbox -17694). After the warm-up the run is
+    // indistinguishable from a continuous one.
+    final runStart = _runStart();
+    // Seek to the MIDPOINT of the run's first segment, not its start boundary.
     // `-ss <t> -noaccurate_seek` lands on the keyframe at-or-before t; seeking
     // to the start boundary can round onto the PREVIOUS keyframe (verified:
     // `-ss` on an exact keyframe time landed one keyframe early), which would
     // shift `-start_number` numbering by one. The midpoint sits strictly inside
-    // [start, next), so the seek always lands on this segment's own start
-    // keyframe → file `startSegment`.m4s begins exactly at boundaries[startSegment].
-    final seekStart =
-        (boundaries[startSegment] + boundaries[startSegment + 1]) / 2;
+    // [start, next), so the seek always lands on that segment's own start
+    // keyframe → file `runStart`.m4s begins exactly at boundaries[runStart].
+    final seekStart = (boundaries[runStart] + boundaries[runStart + 1]) / 2;
+    // The AAC encoder frames audio in 1024-sample blocks counted from its first
+    // input sample, so each run would get its own grid (with AC3 sources two
+    // runs differ by 0 or 512 samples: a hole or overlap at every seam between
+    // them). Trim the audio onto the track's grid — a run from 0 is on it
+    // already. The trim point is inside the warm-up, past the run's first
+    // audio sample.
+    final grid = audioGrid;
+    final audioTrim = grid != null && runStart > 0
+        ? grid.sampleAtOrAfter(boundaries[runStart] + 0.5)
+        : null;
     final args = <String>[
       '-nostdin', '-y', '-loglevel', config.debug ? 'verbose' : 'error',
       '-rw_timeout', '30000000', // 30s; don't hang forever on a stalled socket
@@ -172,6 +230,8 @@ class SegmentProducer {
       '-noaccurate_seek', // copy can't decode to an exact frame; land on the keyframe
       '-i', url,
       ...outputArgs, // -map/-c args defining this track (video copy or audio aac)
+      // start_pts is in samples of the decoded input rate.
+      if (audioTrim != null) ...['-af', 'atrim=start_pts=$audioTrim'],
       '-copyts', // keep absolute source timestamps so segments tile + A/V syncs
       '-avoid_negative_ts', 'disabled',
       '-f', 'hls',
@@ -192,13 +252,19 @@ class SegmentProducer {
       // lands entirely behind the buffered end, hls.js marks the fragment
       // buffered without the buffer advancing, never requests the next one,
       // and playback freezes (proven on a real film, 3 consecutive micro-segments).
-      '-hls_segment_options', 'movflags=+frag_discont',
+      // skip_sidx: the hls muxer forces the mp4 muxer into DASH mode, which
+      // rewrites the first frame of every fragment to start where the previous
+      // one ended so its sidx tiles. For an open-GOP CRA, whose RASL frames
+      // display before it, that moves the keyframe onto a RASL's timestamp
+      // (two frames, one pts). Without a sidx there's nothing to tile and the
+      // real pts is kept; hls.js doesn't read sidx in media segments.
+      '-hls_segment_options', 'movflags=+frag_discont+skip_sidx',
       '-hls_fmp4_init_filename', 'init.mp4',
       '-hls_segment_filename', '${_tempDir.path}/%d.m4s',
       '-hls_playlist_type', 'vod',
       '-hls_list_size', '0',
       '-hls_flags', 'temp_file', // atomic rename → never read a partial .m4s
-      '-start_number', '$startSegment',
+      '-start_number', '$runStart',
       '${_tempDir.path}/out.m3u8',
     ];
 
@@ -206,7 +272,8 @@ class SegmentProducer {
     final fullArgs = _useSetsid ? [config.ffmpegBin, ...args] : args;
     Log.d(
       'vp',
-      '$label launch seg>=$startSegment ss=${seekStart.toStringAsFixed(3)} '
+      '$label launch seg>=$startSegment (run from $runStart) '
+          'ss=${seekStart.toStringAsFixed(3)} '
           'dir=${_tempDir.path}\n    ${config.ffmpegBin} ${args.join(' ')}',
     );
     final proc = await Process.start(exe, fullArgs);
@@ -242,10 +309,11 @@ class SegmentProducer {
     // dir grows unbounded and fills the disk mid-playback. Disk stays bounded to
     // ~(retainBehind + throttleAhead) segments per track. Debug keeps everything
     // for post-mortem. Segments below the new floor sit outside canServe(), so a
-    // backward seek into them restarts the producer instead of 404ing.
+    // backward seek into them restarts the producer instead of 404ing. Warm-up
+    // files (below startSegment) are never served, so they go right away.
     final pruneBelow = config.debug
         ? -1
-        : _clientSegment - config.retainBehindSegments;
+        : max(startSegment, _clientSegment - config.retainBehindSegments);
     try {
       for (final e in _tempDir.listSync()) {
         if (e is! File) continue;

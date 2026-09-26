@@ -8,6 +8,7 @@ class AudioTrack {
   final String codec;
   final int channels;
   final int sampleRate;
+  final double startTime; // stream start_time (s): origin of its AAC grid
   final String? language;
   final String? title;
   final bool isDefault;
@@ -17,6 +18,7 @@ class AudioTrack {
     required this.codec,
     required this.channels,
     required this.sampleRate,
+    this.startTime = 0,
     this.language,
     this.title,
     this.isDefault = false,
@@ -153,6 +155,7 @@ class MediaProbe {
               codec: codec,
               channels: (s['channels'] as num?)?.toInt() ?? 2,
               sampleRate: int.tryParse('${s['sample_rate'] ?? ''}') ?? 48000,
+              startTime: double.tryParse('${s['start_time'] ?? ''}') ?? 0,
               language: lang,
               title: title,
               isDefault: disp != null && disp['default'] == 1,

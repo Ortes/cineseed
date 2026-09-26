@@ -59,6 +59,7 @@ class ProducerManager {
     required List<double> boundaries,
     required int timescale,
     required List<String> outputArgs,
+    AudioGrid? audioGrid,
     required int i,
   }) async {
     if (i < 0 || i >= boundaries.length - 1) return null;
@@ -94,6 +95,7 @@ class ProducerManager {
           timescale: timescale,
           startSegment: i,
           outputArgs: outputArgs,
+          audioGrid: audioGrid,
           config: config,
         );
         _active[key] = p;
@@ -113,6 +115,7 @@ class ProducerManager {
     required List<double> boundaries,
     required int timescale,
     required List<String> outputArgs,
+    AudioGrid? audioGrid,
   }) async {
     _lastUse[key] = DateTime.now();
     final existing = _active[key];
@@ -132,6 +135,7 @@ class ProducerManager {
           timescale: timescale,
           startSegment: 0,
           outputArgs: outputArgs,
+          audioGrid: audioGrid,
           config: config,
         );
         _active[key] = p;
