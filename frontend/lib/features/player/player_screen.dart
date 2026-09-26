@@ -74,8 +74,8 @@ class PlayerScreen extends HookConsumerWidget {
       Future(() async {
         try {
           // In-app playback goes through live HLS, which exists only once the
-          // file is finished + on S3. While still downloading, the web player
-          // can't read the partial file — the user opens the VLC copy-link instead.
+          // file is ready (finished, and on S3 when S3 is configured). Until
+          // then the user opens the VLC copy-link instead.
           final status = await ref
               .read(apiClientProvider)
               .streamStatus(
@@ -85,9 +85,10 @@ class PlayerScreen extends HookConsumerWidget {
               );
           DebugLog.log(
             'PLAYER',
-            'streamStatus mode=${status.mode} url=${status.url}',
+            'streamStatus mode=${status.mode} ready=${status.ready} '
+                'url=${status.url}',
           );
-          if (status.mode != 's3') {
+          if (!status.ready) {
             if (!cancelled) downloading.value = true;
             return;
           }

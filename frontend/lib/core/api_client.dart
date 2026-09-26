@@ -89,10 +89,11 @@ class ApiClient {
     return StreamLink.fromJson((res.data as Map).cast<String, dynamic>()).url;
   }
 
-  /// `/api/stream` status: `mode` is `s3` (finished, on S3 → playable via HLS),
-  /// `local` (still downloading → only the VLC link works), and `url` is the
-  /// direct S3/local link (used for the copy-to-VLC button).
-  Future<({String url, String mode})> streamStatus(
+  /// `/api/stream` status: `ready` means playable via HLS (finished, and on S3
+  /// when S3 is configured); otherwise only the VLC link works. `mode` says
+  /// where `url`, the direct link for the copy-to-VLC button, points: `s3` or
+  /// `local`.
+  Future<({String url, String mode, bool ready})> streamStatus(
     String hash, {
     int? fileIndex,
     CancelToken? cancelToken,
@@ -105,6 +106,7 @@ class ApiClient {
     return (
       url: (m['url'] as String?) ?? '',
       mode: (m['mode'] as String?) ?? '',
+      ready: (m['ready'] as bool?) ?? false,
     );
   }
 

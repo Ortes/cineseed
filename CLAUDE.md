@@ -1,9 +1,10 @@
 # Cineseed — agent notes
 
-Flutter (web) + Dart (`shelf`): Torznab search → Transmission → stream from S3-compatible
-storage via presigned URLs. Backend runs as a Docker container on a Linux server, managed by
-`docker compose`. The image is built locally and shipped via a container registry. The Flutter
-web build is baked into the image at `/app/public` and served by the backend itself.
+Flutter (web) + Dart (`shelf`): Torznab search → Transmission → stream from the local disk,
+or from S3-compatible storage via presigned URLs when `S3_*` is set. Backend runs as a Docker
+container on a Linux server, managed by `docker compose`. CI builds the image and ships it via
+GHCR. The Flutter web build is baked into the image at `/app/public` and served by the backend
+itself.
 
 ## Fixing bugs — ABSOLUTE, NON-NEGOTIABLE RULE
 
@@ -49,8 +50,9 @@ to verify any UI change.
 ## Deploy
 
 CI publishes a multi-arch image on every push to `main` (`sha-<7>`, `edge`) and on `v*`
-tags (`X.Y.Z`, `latest`), then dispatches a deploy to the repo in the `DEPLOY_REPO`
-variable (the private ops repo), which syncs the compose files and restarts cineseed.
+tags (`X.Y.Z`, `latest`). Pushes to `main` (not tags) then dispatch a deploy to the repo in
+the `DEPLOY_REPO` variable (the private ops repo), which syncs the compose files and
+restarts cineseed.
 `deploy/deploy.sh` is the manual fallback: builds `linux/amd64` locally, pushes
 `$IMAGE:sha-<7>`, rsyncs compose + Caddyfile + override + `.env`, pins `CINESEED_IMAGE`
 in the server's `.env`, and recreates only the cineseed service. Targets come from
@@ -62,19 +64,19 @@ runtime envvars (chmod 600).
 
 Torrents are added with **sequential download** so pieces fill front-to-back, and download to
 a **plain local disk** — never a network/FUSE mount. `/api/stream/:hash` returns the presigned
-S3 URL once the object is on S3; until then it serves the local growing file via
-`/api/file/:hash` over HTTP Range (206), reading straight from the local disk.
+S3 URL once the object is on S3; until then (and always without S3) it serves the local file
+via `/api/file/:hash` over HTTP Range (206), reading straight from the local disk.
 Caveat: containers with the index at the end won't start until ~complete even with sequential
 download.
 
 ### Upload to S3 (backend-driven, no Transmission hook)
 
-The backend uploads finished files to S3 **itself**, in Dart: a 30s internal sweep (+ the
-`/torrents` poll) calls `S3Signer.putFile` → minio `fPutObject`, streaming the file from the
-local disk. Once the object is confirmed on S3 it relocates Transmission onto the post-upload
-location (`torrent-set-location`, `move:false`, so it still "sees" its files — e.g. an rclone
-mount of the same bucket) and deletes the local copy. See `uploadToS3` / `finalizeToS3` /
-`resolveS3` in `backend/lib/api.dart`.
+With S3 configured, the backend uploads finished files to S3 **itself**, in Dart: a 1 s sweep
+(running only while something downloads, + the `/torrents` poll) calls `S3Signer.putFile` →
+minio `fPutObject`, streaming the file from the local disk. Once the object is confirmed on S3
+it relocates Transmission onto the post-upload location (`torrent-set-location`, `move:false`,
+so it still "sees" its files — e.g. an rclone mount of the same bucket) and deletes the local
+copy. See `S3Offloader` in `backend/lib/src/storage/s3_offloader.dart`.
 
 **Why not write through an rclone mount?** A read through the rclone VFS bumps the cache
 file's mod time, which makes rclone abort its in-flight multipart upload (`source file is

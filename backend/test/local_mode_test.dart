@@ -130,6 +130,7 @@ void main() {
     test('stream goes to the local file route', () async {
       final s = await json('$base/stream/h1') as Map;
       expect(s['mode'], 'local');
+      expect(s['ready'], isTrue); // the in-app player's gate
       expect(s['url'], endsWith('/api/file/h1'));
     });
 

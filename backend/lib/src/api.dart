@@ -237,11 +237,18 @@ String _contentTypeFor(String name) {
     // for a multi-GB file, and a seeding handle can delay it). Handing out a
     // presigned URL before the object lands → 404. So only go S3 once the
     // object actually exists; otherwise keep serving the local copy.
-    if (offload != null &&
-        info.percentDone >= 1.0 &&
-        await offload.fileOnS3(file.name)) {
+    //
+    // `ready` is the in-app (HLS) playback gate, same as `onS3` on /torrents:
+    // finished, and on S3 when S3 is configured.
+    final finished = info.percentDone >= 1.0;
+    if (offload != null && finished && await offload.fileOnS3(file.name)) {
       final url = await offload.signer.presign(file.name); // name == S3 key
-      return _json({'url': url, 'mode': 's3', 'percentDone': info.percentDone});
+      return _json({
+        'url': url,
+        'mode': 's3',
+        'ready': true,
+        'percentDone': info.percentDone,
+      });
     }
 
     // Absolute URL so the browser's <video> can hit it directly (works for
@@ -251,6 +258,7 @@ String _contentTypeFor(String name) {
     return _json({
       'url': localUrl,
       'mode': 'local',
+      'ready': offload == null && finished,
       'percentDone': info.percentDone,
     });
   });

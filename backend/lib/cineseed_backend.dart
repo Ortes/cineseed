@@ -9,7 +9,7 @@ library;
 
 export 'package:cineseed_shared/cineseed_shared.dart';
 
-export 'src/config.dart' show Config;
+export 'src/config.dart' show Config, S3Settings;
 export 'src/dotenv_loader.dart' show loadDotenv;
 export 'src/server.dart' show CineseedServer, startServer;
 export 'src/storage/s3_signer.dart' show S3Signer;

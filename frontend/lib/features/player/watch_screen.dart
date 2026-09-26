@@ -121,8 +121,11 @@ class _FilePicker extends StatelessWidget {
             child: ListView.builder(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
               itemCount: torrent.files.length,
-              itemBuilder: (context, i) =>
-                  _FileTile(hash: hash, file: torrent.files[i]),
+              itemBuilder: (context, i) => _FileTile(
+                hash: hash,
+                file: torrent.files[i],
+                packDone: torrent.percentDone >= 1.0,
+              ),
             ),
           ),
         ],
@@ -132,10 +135,17 @@ class _FilePicker extends StatelessWidget {
 }
 
 class _FileTile extends ConsumerWidget {
-  const _FileTile({required this.hash, required this.file});
+  const _FileTile({
+    required this.hash,
+    required this.file,
+    required this.packDone,
+  });
 
   final String hash;
   final TorrentFileInfo file;
+
+  /// The whole torrent is downloaded: files only become ready after that.
+  final bool packDone;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -143,15 +153,17 @@ class _FileTile extends ConsumerWidget {
     // download need this file on S3; the VLC link works from the first bytes,
     // because sequential download fills each file front-to-back.
     //
-    // "Downloaded" is its own state, distinct from "ready": the files of a
-    // season pack go up to S3 one at a time, so an episode can sit fully
-    // downloaded but not yet uploaded — saying "while downloading" there would
-    // misreport which half of the pipeline it is waiting on.
+    // "Downloaded" is its own state, distinct from "ready": a file becomes
+    // ready only once the whole pack is downloaded, and with S3 once it is
+    // also uploaded (one file at a time) — saying "while downloading" there
+    // would misreport what it is waiting on.
     final downloaded = file.percentDone >= 1.0;
     final status = file.onS3
         ? 'Ready to stream  ·  ${fmtBytes(file.length)}'
         : downloaded
-        ? 'Downloaded  ·  not on S3 yet'
+        ? packDone
+              ? 'Downloaded  ·  uploading'
+              : 'Downloaded  ·  waiting for the rest of the pack'
         : file.hasBytes
         ? '${(file.percentDone * 100).toStringAsFixed(1)} %  ·  '
               'playable in VLC while downloading'
