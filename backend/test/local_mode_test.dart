@@ -144,6 +144,7 @@ void main() {
     test('a finished torrent is ready to stream, with no upload', () async {
       final t = (await json('$base/torrents') as List).single as Map;
       expect(t['onS3'], isTrue); // "ready to stream" without S3
+      expect(t['playable'], isTrue);
       expect(t['uploadProgress'], 0);
       expect(t['strandedFiles'], 0);
     });
@@ -159,10 +160,17 @@ void main() {
         'are in', () async {
       final middle = {for (var i = 1; i < client.pieceCount - 1; i++) i};
       addTearDown(() => client.missing = {});
+      Future<List<Object?>> gates() async => [
+        (await json('$base/stream/h1') as Map)['ready'],
+        ((await json('$base/torrents') as List).single as Map)['playable'],
+        (((await json('$base/torrents/h1/files') as Map)['files'] as List)
+                .single
+            as Map)['playable'],
+      ];
       client.missing = {...middle, client.pieceCount - 1};
-      expect((await json('$base/stream/h1') as Map)['ready'], isFalse);
+      expect(await gates(), [false, false, false]);
       client.missing = middle;
-      expect((await json('$base/stream/h1') as Map)['ready'], isTrue);
+      expect(await gates(), [true, true, true]);
     });
 
     test('download is the whole file as an attachment', () async {

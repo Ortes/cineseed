@@ -149,9 +149,9 @@ class _FileTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Same gates as the library, one file down: in-app playback and the VLC
-    // link work from the first bytes, because sequential download fills each
-    // file front-to-back; Cast and download need this file on S3.
+    // Same gates as the library, one file down: the VLC link works from the
+    // first bytes, in-app playback once the file is `playable`, Cast and
+    // download once it is on S3.
     //
     // "Downloaded" is its own state, distinct from "ready": with S3 a file is
     // ready once the whole pack is downloaded and it is uploaded (one file at
@@ -166,7 +166,7 @@ class _FileTile extends ConsumerWidget {
               : 'Downloaded  ·  waiting for the rest of the pack'
         : file.hasBytes
         ? '${(file.percentDone * 100).toStringAsFixed(1)} %  ·  '
-              'playable while downloading'
+              '${file.playable ? 'playable while downloading' : 'starting…'}'
         : 'Waiting  ·  ${fmtBytes(file.length)}';
 
     void open() {
@@ -183,7 +183,7 @@ class _FileTile extends ConsumerWidget {
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: file.hasBytes ? open : null,
+          onTap: file.playable ? open : null,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             child: Row(
@@ -283,10 +283,14 @@ class _FileTile extends ConsumerWidget {
                         : null,
                   ),
                   IconButton(
-                    tooltip: 'Play in browser',
+                    tooltip: file.playable
+                        ? 'Play in browser'
+                        : 'Available once the first pieces are in',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                    color: CineseedColors.cream,
-                    onPressed: open,
+                    color: file.playable
+                        ? CineseedColors.cream
+                        : CineseedColors.creamMuted.withValues(alpha: 0.4),
+                    onPressed: file.playable ? open : null,
                   ),
                 ],
               ],

@@ -61,6 +61,15 @@ void main() {
     expect(await f.readable(50000), 0); // past the end
   });
 
+  test('hasEdges wants the first and last pieces of the file', () async {
+    final f = find(_Pieces({}, 4));
+    Future<bool> edges(Set<int> have) async =>
+        f.hasEdges((await _Pieces(have, 4).pieces('h'))!);
+    expect(await edges({0, 3}), isTrue);
+    expect(await edges({0, 1, 2}), isFalse); // no last piece
+    expect(await edges({1, 2, 3}), isFalse); // no first piece
+  });
+
   test('once every piece is in, no more bitfield fetches', () async {
     final c = _Pieces({0, 1, 2, 3}, 4);
     final f = find(c);

@@ -31,6 +31,11 @@ class TorrentState {
   /// torrent can never reach [onS3]. 0 for every healthy torrent.
   final int strandedFiles;
 
+  /// The in-app player can start: on S3, or while downloading once a video
+  /// file's first and last pieces are in (all that building its HLS session
+  /// reads). The library's Play gate; backend-computed.
+  final bool playable;
+
   const TorrentState({
     required this.hashString,
     required this.name,
@@ -46,6 +51,7 @@ class TorrentState {
     this.onS3 = false,
     this.uploadProgress = 0,
     this.strandedFiles = 0,
+    this.playable = false,
   });
 
   /// Bytes fully present locally (Transmission's view). NB: this is NOT the
@@ -71,6 +77,7 @@ class TorrentState {
     bool? onS3,
     double? uploadProgress,
     int? strandedFiles,
+    bool? playable,
   }) => TorrentState(
     hashString: hashString,
     name: name,
@@ -86,6 +93,7 @@ class TorrentState {
     onS3: onS3 ?? this.onS3,
     uploadProgress: uploadProgress ?? this.uploadProgress,
     strandedFiles: strandedFiles ?? this.strandedFiles,
+    playable: playable ?? this.playable,
   );
 
   factory TorrentState.fromJson(Map<String, dynamic> json) => TorrentState(
@@ -103,6 +111,7 @@ class TorrentState {
     onS3: json['onS3'] as bool? ?? false,
     uploadProgress: (json['uploadProgress'] as num?)?.toDouble() ?? 0,
     strandedFiles: (json['strandedFiles'] as num?)?.toInt() ?? 0,
+    playable: json['playable'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -120,5 +129,6 @@ class TorrentState {
     'onS3': onS3,
     'uploadProgress': uploadProgress,
     'strandedFiles': strandedFiles,
+    'playable': playable,
   };
 }

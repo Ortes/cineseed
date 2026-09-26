@@ -12,11 +12,14 @@ class TorrentFileInfo {
   final int length; // bytes
   final int bytesCompleted; // bytes downloaded so far
 
-  /// Whether THIS file is ready to stream (see [TorrentState.onS3]) — the gate
-  /// for in-app playback, Cast and download. With S3 a season pack uploads one
-  /// file at a time, so early episodes become playable while the later ones
-  /// are still going up.
+  /// Whether THIS file is on S3 (see [TorrentState.onS3]) — the gate for Cast
+  /// and download. With S3 a season pack uploads one file at a time, so early
+  /// episodes are up while the later ones are still going.
   final bool onS3;
+
+  /// Whether the in-app player can start on THIS file (see
+  /// [TorrentState.playable]).
+  final bool playable;
 
   const TorrentFileInfo({
     required this.index,
@@ -24,6 +27,7 @@ class TorrentFileInfo {
     this.length = 0,
     this.bytesCompleted = 0,
     this.onS3 = false,
+    this.playable = false,
   });
 
   /// Basename — the picker lists episodes, not paths.
@@ -42,6 +46,7 @@ class TorrentFileInfo {
         length: (json['length'] as num?)?.toInt() ?? 0,
         bytesCompleted: (json['bytesCompleted'] as num?)?.toInt() ?? 0,
         onS3: json['onS3'] as bool? ?? false,
+        playable: json['playable'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +55,7 @@ class TorrentFileInfo {
     'length': length,
     'bytesCompleted': bytesCompleted,
     'onS3': onS3,
+    'playable': playable,
   };
 }
 

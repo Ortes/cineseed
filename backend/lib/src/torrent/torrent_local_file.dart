@@ -71,6 +71,12 @@ class TorrentLocalFile implements LocalFile {
   Future<TorrentPieces?>? _fetching;
   bool _complete = false; // latched: no more RPCs once every piece is in
 
+  /// Whether [p] has this file's first and last pieces: all that building its
+  /// HLS session reads (the header, and the Cues mkvmerge writes at the end).
+  bool hasEdges(TorrentPieces p) =>
+      p.has(_offset ~/ p.pieceSize) &&
+      p.has((_offset + length - 1) ~/ p.pieceSize);
+
   @override
   String? path() {
     for (final p in _paths) {

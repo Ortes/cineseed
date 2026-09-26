@@ -377,9 +377,9 @@ class _TorrentTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = torrent;
-    // In-app playback and the VLC copy-link work as soon as any bytes have
-    // landed (sequential download fills the file front-to-back; the player
-    // waits for the first pieces). Cast and download need the file on S3
+    // The VLC copy-link works as soon as any bytes have landed. In-app playback
+    // waits for `playable` (on S3, or a file's first and last pieces are in:
+    // seconds into a download). Cast and download need the file on S3
     // (`onS3`).
     final hasBytes = t.percentDone > 0;
     // Stranded first: such a torrent is also 100% done and not on S3, so it
@@ -395,7 +395,7 @@ class _TorrentTile extends ConsumerWidget {
         : finalizing
         ? 'Uploading to S3…  ${(t.uploadProgress * 100).toStringAsFixed(0)} %'
         : '${(t.percentDone * 100).toStringAsFixed(1)} %  ·  '
-              '${hasBytes ? 'playable while downloading' : 'starting…'}';
+              '${t.playable ? 'playable while downloading' : 'starting…'}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -536,14 +536,16 @@ class _TorrentTile extends ConsumerWidget {
                   // In-app playback: live HLS off S3 once the file is there,
                   // else off the local copy while it downloads.
                   IconButton(
-                    tooltip: stranded
+                    tooltip: t.playable
+                        ? 'Play in browser'
+                        : stranded
                         ? 'Files missing — re-download to recover'
-                        : 'Play in browser',
+                        : 'Available once the first pieces are in',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                    color: stranded
-                        ? CineseedColors.creamMuted.withValues(alpha: 0.4)
-                        : CineseedColors.cream,
-                    onPressed: !stranded
+                    color: t.playable
+                        ? CineseedColors.cream
+                        : CineseedColors.creamMuted.withValues(alpha: 0.4),
+                    onPressed: t.playable
                         ? () {
                             ref
                                 .read(userInitiatedPlaybackProvider.notifier)

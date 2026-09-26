@@ -121,18 +121,67 @@ String _contentTypeFor(String name) {
     );
   });
 
+  // Which of [indices] (files of [hash]) the in-app player can start on from
+  // the local copy: it has its first and last pieces (see
+  // [TorrentLocalFile.hasEdges]). Transmission fetches those before anything
+  // else, so this holds seconds after a download starts. One bitfield fetch
+  // for the whole torrent, none once it is complete.
+  Future<Set<int>> startableLocally(
+    String hash,
+    TorrentStreamInfo info,
+    Iterable<int> indices,
+  ) async {
+    final pieces = info.percentDone >= 1.0 ? null : await client.pieces(hash);
+    if (info.percentDone < 1.0 && pieces == null) return {};
+    final startable = <int>{};
+    for (final i in indices) {
+      final local = TorrentLocalFile.find(
+        client,
+        hash,
+        info,
+        i,
+        fallbackDir: downloadDir,
+        incompleteDir: incompleteDir,
+        remoteDir: offload?.postUploadDir,
+      );
+      if (local != null && (pieces == null || local.hasEdges(pieces))) {
+        startable.add(i);
+      }
+    }
+    return startable;
+  }
+
+  Future<bool> playableLocally(String id, TorrentStreamInfo info) async {
+    final sid = StreamId.parse(id)!;
+    final index = sid.resolve(info.files)!;
+    return (await startableLocally(sid.hash, info, [index])).isNotEmpty;
+  }
+
+  // The library's Play gate. A finished torrent plays from S3 or its local
+  // copy, unless files were lost; a downloading one once any of its video
+  // files can start locally (a season pack then opens its file list).
+  Future<bool> torrentPlayable(TorrentState s) async {
+    if (s.percentDone >= 1.0) return s.onS3 || s.strandedFiles == 0;
+    final info = await client.streamInfo(s.hashString);
+    if (info == null || info.files.isEmpty) return false;
+    final videos = videoFileIndices(info.files);
+    return (await startableLocally(s.hashString, info, videos)).isNotEmpty;
+  }
+
   // Library: live torrent state. `onS3` — whether the video file has landed on
-  // S3 — is the gate the frontend uses for in-app playback, Cast and download.
+  // S3 — gates Cast and download; `playable` gates in-app playback.
   r.get('/torrents', (Request req) async {
     final states = await client.list();
     final annotated = await Future.wait(
       states.map((s) async {
-        if (offload == null) return s.copyWith(onS3: s.percentDone >= 1.0);
-        return s.copyWith(
-          onS3: await offload.resolve(s),
-          uploadProgress: offload.uploadProgress(s.hashString),
-          strandedFiles: offload.strandedFiles(s.hashString),
-        );
+        final t = offload == null
+            ? s.copyWith(onS3: s.percentDone >= 1.0)
+            : s.copyWith(
+                onS3: await offload.resolve(s),
+                uploadProgress: offload.uploadProgress(s.hashString),
+                strandedFiles: offload.strandedFiles(s.hashString),
+              );
+        return t.copyWith(playable: await torrentPlayable(t));
       }),
     );
     return _json(annotated.map((e) => e.toJson()).toList());
@@ -153,16 +202,21 @@ String _contentTypeFor(String name) {
       return _json({'error': 'torrent not found or no files'}, 404);
     }
     final finished = info.percentDone >= 1.0;
+    final videos = videoFileIndices(info.files);
+    final local = await startableLocally(hash, info, videos);
     final files = <TorrentFileInfo>[];
-    for (final i in videoFileIndices(info.files)) {
+    for (final i in videos) {
       final f = info.files[i];
+      final onS3 =
+          finished && (offload == null || await offload.fileOnS3(f.name));
       files.add(
         TorrentFileInfo(
           index: i,
           name: f.name,
           length: f.length,
           bytesCompleted: f.bytesCompleted,
-          onS3: finished && (offload == null || await offload.fileOnS3(f.name)),
+          onS3: onS3,
+          playable: onS3 || local.contains(i),
         ),
       );
     }
@@ -228,27 +282,6 @@ String _contentTypeFor(String name) {
     final index = sid.resolve(info.files);
     if (index == null) return null;
     return (info, info.files[index]);
-  }
-
-  // Whether the in-app player can start on the local copy of [id]'s file:
-  // building its HLS session reads the header (first piece) and the Cues,
-  // which mkvmerge puts in the last piece. Transmission fetches a file's first
-  // and last pieces before anything else, so this holds seconds after a
-  // download starts.
-  Future<bool> playableLocally(String id, TorrentStreamInfo info) async {
-    final sid = StreamId.parse(id)!;
-    final local = TorrentLocalFile.find(
-      client,
-      sid.hash,
-      info,
-      sid.resolve(info.files)!,
-      fallbackDir: downloadDir,
-      incompleteDir: incompleteDir,
-      remoteDir: offload?.postUploadDir,
-    );
-    return local != null &&
-        await local.readable(0) > 0 &&
-        await local.readable(local.length - 1) > 0;
   }
 
   // A missing HLS session, init or segment while the file is still
