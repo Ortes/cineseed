@@ -26,7 +26,9 @@ rsync -azL "${files[@]}" "$SERVER:$REMOTE/"
 
 # Pin the image in the server's .env, so any later `docker compose up` there
 # keeps running exactly this build. Only cineseed is recreated: transmission
-# and caddy are left running as-is. Then prune dangling images so superseded
-# layers don't slowly fill the server disk — a full disk breaks the next pull.
+# and caddy are left running as-is. Then drop every cineseed build no container
+# uses (each deploy is a new sha tag, so they are never merely dangling) and
+# dangling layers — a full root disk breaks the next pull and kills Transmission.
 ssh "$SERVER" "cd $REMOTE && sed -i '/^CINESEED_IMAGE=/d' .env && echo 'CINESEED_IMAGE=$TAG' >> .env \
-  && docker compose pull cineseed && docker compose up -d --no-deps cineseed && docker image prune -f"
+  && docker compose pull cineseed && docker compose up -d --no-deps cineseed \
+  && docker image prune -af --filter label=org.opencontainers.image.title=cineseed && docker image prune -f"

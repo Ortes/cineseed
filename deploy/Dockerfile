@@ -57,6 +57,8 @@ RUN cd backend && dart compile exe bin/server.dart \
 
 # ─── Stage 2: slim runtime (per target platform) ───────────────────
 FROM debian:bookworm-slim AS runtime
+# Lets a deploy prune superseded builds (every deploy is a distinct sha tag).
+LABEL org.opencontainers.image.title=cineseed
 # ca-certificates: required for outbound TLS (S3, TMDB, tracker).
 # ffmpeg: provides ffprobe + ffmpeg for the live HLS remux path.
 RUN apt-get update \
