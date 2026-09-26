@@ -22,8 +22,8 @@ void main() {
       expect(depth('/watch/abc123'), 2);
     });
 
-    test('/film/:tmdbId sits on top of the library', () {
-      expect(depth('/film/42'), 2);
+    test('/film/:type/:tmdbId sits on top of the library', () {
+      expect(depth('/film/movie/42'), 2);
     });
 
     test('/search sits on top of the library', () {
