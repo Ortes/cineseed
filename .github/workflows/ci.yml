@@ -27,16 +27,18 @@ jobs:
           channel: stable
           cache: true
 
-      # The streaming tests drive real ffmpeg/ffprobe.
+      # Some streaming tests drive real ffmpeg/ffprobe.
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
       - run: flutter pub get
       - run: dart format --output=none --set-exit-if-changed .
-      - run: dart analyze --fatal-infos shared backend
+      - run: dart analyze --fatal-infos shared backend packages/cineseed_streaming
       - run: flutter analyze
         working-directory: frontend
       - run: dart test
         working-directory: backend
+      - run: dart test
+        working-directory: packages/cineseed_streaming
       # The frontend imports web-only libraries, so its tests run in Chrome.
       - run: flutter test --platform chrome
         working-directory: frontend

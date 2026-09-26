@@ -11,6 +11,7 @@ workspace:
   - shared
   - backend
   - frontend
+  - packages/cineseed_streaming
 
 # Forks adding HLS subtitle + audio-track selection (branch feat/audio-tracks).
 # Pinned to commits for reproducible builds. For local fast iteration, swap a

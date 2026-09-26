@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cineseed_backend/streaming/mp4_boxes.dart';
-import 'package:cineseed_backend/streaming/segment_ref.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 import 'package:test/test.dart';
 
 /// Builds a minimal but structurally valid fMP4 segment: `moof(mfhd, traf(tfdt))`

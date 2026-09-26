@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:cineseed_backend/streaming/segment_producer.dart';
-import 'package:cineseed_backend/streaming/segment_ref.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 import 'package:test/test.dart';
 
 /// Consumes a segment ref's stream (closing its file handle) as a string.

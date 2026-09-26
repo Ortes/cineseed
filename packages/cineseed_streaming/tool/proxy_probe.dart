@@ -6,7 +6,7 @@
 // Defaults to /tmp/hlsgate/url.txt.
 import 'dart:io';
 
-import 'package:cineseed_backend/streaming/s3_range_proxy.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 
 Future<void> main(List<String> args) async {
   final urlFile = args.isNotEmpty ? args.first : '/tmp/hlsgate/url.txt';

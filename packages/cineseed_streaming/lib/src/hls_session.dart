@@ -1,23 +1,23 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import '../src/log.dart';
-import '../src/storage/s3_signer.dart';
-import '../src/torrent/stream_id.dart';
-import '../src/torrent/torrent_client.dart';
+import 'local_range_server.dart';
+import 'log.dart';
+import 'media_source.dart';
 import 'mkv_cues.dart';
 import 'probe.dart';
 import 's3_range_proxy.dart';
 
 /// Immutable plan + mutable per-track caches for one playable file's HLS.
 class HlsSession {
-  /// Stream id of the file this session plays — `<hash>` or `<hash>.<index>`
-  /// (see [StreamId]). Every downstream key derives from it: the range proxy's
-  /// upstream registration, and the ffmpeg producer keys `m:<id>:<track>`. It is
-  /// therefore per FILE, not per torrent: two episodes of the same season pack
-  /// are two independent sessions with their own producers and cached chunks.
+  /// Stream id of the file this session plays, as understood by the
+  /// [MediaSourceResolver]. Every downstream key derives from it: the range
+  /// proxy's upstream registration, and the ffmpeg producer keys
+  /// `m:<id>:<track>`. It is therefore per FILE: two episodes of the same
+  /// season pack are two independent sessions with their own producers and
+  /// cached chunks.
   final String id;
-  final String url; // presigned S3 GET URL (Range-capable)
+  final String url; // loopback URL (range proxy or local file server)
   final MediaProbe probe;
 
   /// All keyframe timestamps (cue points), ascending.
@@ -42,13 +42,10 @@ class HlsSession {
   /// producer boundary.
   final List<int> groupStart;
 
-  /// S3 object key — kept so the manager can re-presign the upstream URL before
-  /// the presigned link expires. The loopback proxy URL ffmpeg reads stays
-  /// constant; only the proxy's upstream is refreshed.
-  final String fileName;
-
-  /// When the current presigned upstream URL expires.
-  DateTime urlExpiresAt;
+  /// When the current upstream URL expires (null: never). The manager
+  /// re-resolves the source shortly before; the loopback URL ffmpeg reads stays
+  /// constant, only the proxy's upstream is refreshed.
+  DateTime? sourceExpiresAt;
 
   DateTime lastAccess;
 
@@ -92,8 +89,7 @@ class HlsSession {
     required this.boundaries,
     required this.producerBoundaries,
     required this.groupStart,
-    required this.fileName,
-    required this.urlExpiresAt,
+    this.sourceExpiresAt,
   }) : lastAccess = DateTime.now();
 
   int get segmentCount => boundaries.length - 1;
@@ -182,26 +178,26 @@ class HlsSession {
   }
 }
 
-/// Builds + caches [HlsSession]s. Returns null when a hash isn't HLS-eligible
-/// (not finished/on-S3, no cues, probe failed).
+/// Builds + caches [HlsSession]s. Returns null when an id isn't HLS-eligible
+/// (the resolver has no source for it, no cues, probe failed).
 class HlsSessionManager {
-  final S3Signer signer;
-  final TorrentClient client;
+  final MediaSourceResolver resolver;
+
+  /// Reads [HttpMediaSource]s (caching, read-ahead).
   final S3RangeProxy proxy;
+
+  /// Serves [FileMediaSource]s. Required only if the resolver returns them.
+  final LocalRangeServer? localFiles;
   final String ffprobeBin;
   final double targetSegmentSeconds;
-
-  /// Lifetime of a presigned upstream URL — how long [S3Signer.presign] links
-  /// stay valid, and therefore when [_maybeRefreshUrl] must re-sign.
-  final Duration ttl;
 
   /// How long a session may sit unused before it is evicted (killing its
   /// producer and dropping its cached proxy chunks).
   ///
-  /// This used to be the same value as [ttl]. Conflating them meant a finished
-  /// session held its ffmpeg producer and up to the full proxy cache for the
-  /// presigned-URL lifetime — 6 h in production — which is unrelated to whether
-  /// anyone is still watching.
+  /// Deliberately unrelated to the source's own expiry: tying the two held a
+  /// finished session's ffmpeg producer and up to the full proxy cache for the
+  /// presigned-URL lifetime — 6 h in production — whether or not anyone was
+  /// still watching.
   final Duration idleTtl;
 
   /// Cap on cached sessions. [maxSessions] bounded only [ProducerManager], so
@@ -222,12 +218,11 @@ class HlsSessionManager {
   Timer? _sweepTimer;
 
   HlsSessionManager({
-    required this.signer,
-    required this.client,
+    required this.resolver,
     required this.proxy,
+    this.localFiles,
     this.ffprobeBin = 'ffprobe',
     this.targetSegmentSeconds = 6,
-    this.ttl = const Duration(hours: 5),
     this.idleTtl = const Duration(minutes: 10),
     this.maxSessions = 3,
     this.onReady,
@@ -262,23 +257,27 @@ class HlsSessionManager {
     });
   }
 
-  /// Re-presign + re-register the upstream URL shortly before it expires, so a
+  /// Re-resolve + re-register the upstream URL shortly before it expires, so a
   /// long-running session's continuous ffmpeg (reading via the stable loopback
   /// URL) keeps getting fresh chunks. Best-effort: a failure leaves the existing
   /// upstream in place. Cached chunks are unaffected.
   Future<void> _maybeRefreshUrl(HlsSession s) async {
-    if (DateTime.now().isBefore(
-      s.urlExpiresAt.subtract(const Duration(minutes: 5)),
-    )) {
+    final expiresAt = s.sourceExpiresAt;
+    if (expiresAt == null ||
+        DateTime.now().isBefore(
+          expiresAt.subtract(const Duration(minutes: 5)),
+        )) {
       return;
     }
     try {
-      final fresh = await signer.presign(s.fileName);
-      proxy.register(s.id, fresh);
-      // `ttl` is the presign lifetime, which is what this timestamp tracks —
-      // NOT the session idle TTL these two used to share.
-      s.urlExpiresAt = DateTime.now().add(ttl);
-      Log.d('hls', '${s.id} presigned URL refreshed');
+      final fresh = await resolver.resolve(s.id);
+      if (fresh is! HttpMediaSource) {
+        Log.d('hls', '${s.id} url refresh FAILED: resolver returned $fresh');
+        return;
+      }
+      proxy.register(s.id, fresh.url);
+      s.sourceExpiresAt = fresh.expiresAt;
+      Log.d('hls', '${s.id} upstream URL refreshed');
     } catch (e) {
       // Best-effort: leave the existing upstream in place. Surface the cause in
       // debug (observability only — control flow is unchanged).
@@ -287,22 +286,21 @@ class HlsSessionManager {
   }
 
   Future<HlsSession?> _build(String id) async {
-    final sid = StreamId.parse(id);
-    if (sid == null) return null; // malformed id names no file
-    final info = await client.streamInfo(sid.hash);
-    if (info == null || info.files.isEmpty) return null;
-    final index = sid.resolve(info.files);
-    if (index == null) return null; // no such file in this torrent
-    final file = info.files[index];
-    // HLS only for finished files that have actually landed on S3. Per FILE:
-    // a season pack uploads one episode at a time, so E01 is playable while the
-    // rest are still going up.
-    if (info.percentDone < 1.0 || !await signer.exists(file.name)) return null;
+    final source = await resolver.resolve(id);
+    if (source == null) return null;
 
-    // Route every read (probe, Cues, and later ffmpeg) through the caching
-    // range proxy: a loopback URL backed by a warm chunk cache + read-ahead.
-    final presigned = await signer.presign(file.name);
-    final url = proxy.register(id, presigned);
+    // Every read (probe, Cues, and later ffmpeg) goes through a loopback URL:
+    // the caching range proxy for remote sources, the file server for local
+    // ones.
+    final url = switch (source) {
+      HttpMediaSource(:final url) => proxy.register(id, url),
+      FileMediaSource(:final path) =>
+        (localFiles ??
+                (throw StateError(
+                  'FileMediaSource for $id but no LocalRangeServer given',
+                )))
+            .register(id, path),
+    };
 
     // probe + Cues are independent reads → run concurrently. Both also warm the
     // proxy's header/index chunks that every segment ffmpeg re-reads.
@@ -333,14 +331,16 @@ class HlsSessionManager {
       boundaries: boundaries,
       producerBoundaries: producerBoundaries,
       groupStart: groupStart,
-      fileName: file.name,
-      urlExpiresAt: DateTime.now().add(ttl),
+      sourceExpiresAt: switch (source) {
+        HttpMediaSource(:final expiresAt) => expiresAt,
+        FileMediaSource() => null,
+      },
     );
     _cache[id] = session;
     _enforceCap();
     Log.d(
       'hls',
-      '$id session built: ${file.name} '
+      '$id session built: ${source.label} '
           'dur=${duration.toStringAsFixed(1)}s segs=${session.segmentCount} '
           'video=${probe.video?.codec} audio=${probe.audio.length} '
           'subs=${probe.subtitles.length}',
@@ -377,5 +377,6 @@ class HlsSessionManager {
   void _release(String id) {
     onEvict?.call(id); // kill the live video producer first
     proxy.forget(id); // then free the file's cached chunks
+    localFiles?.forget(id);
   }
 }

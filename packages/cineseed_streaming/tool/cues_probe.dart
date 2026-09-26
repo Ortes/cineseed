@@ -2,7 +2,7 @@
 // keyframe boundaries. Usage: dart run tool/cues_probe.dart "<presigned-url>"
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:cineseed_backend/streaming/mkv_cues.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 
 class _CountingClient extends http.BaseClient {
   final http.Client _inner = http.Client();

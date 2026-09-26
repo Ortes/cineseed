@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_cors_headers/shelf_cors_headers.dart';
@@ -9,14 +10,8 @@ import 'package:shelf_static/shelf_static.dart';
 
 import 'api.dart';
 import 'config.dart';
-import 'log.dart';
+import 'media/torrent_media_resolver.dart';
 import 'storage/s3_signer.dart';
-import '../streaming/hls_session.dart';
-import '../streaming/producer_manager.dart';
-import '../streaming/s3_range_proxy.dart';
-import '../streaming/segment_producer.dart';
-import '../streaming/segments.dart';
-import '../streaming/transcode_pool.dart';
 import 'torrent/torrent_client.dart';
 import 'torrent/transmission_client.dart';
 import 'tracker/torznab_tracker.dart';
@@ -111,12 +106,14 @@ Future<CineseedServer> startServer(
     debug: config.debug,
   );
   final hls = HlsSessionManager(
-    signer: signer,
-    client: client,
+    resolver: TorrentMediaResolver(
+      client: client,
+      signer: signer,
+      ttl: Duration(seconds: config.streamUrlTtl),
+    ),
     proxy: proxy,
     ffprobeBin: config.ffprobeBin,
     targetSegmentSeconds: config.hlsSegmentSeconds,
-    ttl: Duration(seconds: config.streamUrlTtl),
     idleTtl: Duration(seconds: config.hlsSessionIdleTtl),
     maxSessions: config.hlsMaxSessions,
     // Pre-warm the video init (and thus master CODECS) while the proxy cache is

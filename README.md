@@ -47,6 +47,7 @@ Flutter Web  ──►  Dart backend (shelf, 1 binary, serves the web build too)
 | `frontend/` | Flutter app (hooks_riverpod, go_router, chewie) |
 | `backend/` | Dart `shelf` server (API + static web build) |
 | `shared/` | Models shared between front and back |
+| `packages/cineseed_streaming/` | Live HLS engine (MKV → fMP4 over HTTP Range, S3 or local disk), no torrent knowledge |
 | `deploy/` | `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `deploy.sh` |
 
 ## Requirements

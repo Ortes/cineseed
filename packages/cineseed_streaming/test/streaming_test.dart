@@ -1,8 +1,4 @@
-import 'package:cineseed_backend/streaming/hls_playlists.dart';
-import 'package:cineseed_backend/streaming/hls_session.dart';
-import 'package:cineseed_backend/streaming/probe.dart';
-import 'package:cineseed_backend/streaming/s3_range_proxy.dart';
-import 'package:cineseed_backend/streaming/segments.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 import 'package:test/test.dart';
 
 HlsSession _sessionWith(List<AudioTrack> audio) => HlsSession(
@@ -18,8 +14,6 @@ HlsSession _sessionWith(List<AudioTrack> audio) => HlsSession(
   boundaries: const [0, 6, 12],
   producerBoundaries: const [0, 6, 12],
   groupStart: const [0, 1, 2],
-  fileName: 'y',
-  urlExpiresAt: DateTime.now().add(const Duration(hours: 1)),
 );
 
 AudioTrack _audio(int order, {bool isDefault = false}) => AudioTrack(

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:cineseed_backend/streaming/s3_range_proxy.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 import 'package:test/test.dart';
 
 /// Deterministic content: byte at absolute offset [i]. Every test below asserts

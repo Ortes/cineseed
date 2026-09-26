@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../src/log.dart';
+import 'log.dart';
 import 'mp4_boxes.dart';
 import 'segment_ref.dart';
 

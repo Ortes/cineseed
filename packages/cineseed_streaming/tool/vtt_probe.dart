@@ -4,14 +4,7 @@
 //   dart run tool/vtt_probe.dart [presignedUrlFile]
 import 'dart:io';
 
-import 'package:cineseed_backend/streaming/hls_session.dart';
-import 'package:cineseed_backend/streaming/mkv_cues.dart';
-import 'package:cineseed_backend/streaming/probe.dart';
-import 'package:cineseed_backend/streaming/producer_manager.dart';
-import 'package:cineseed_backend/streaming/s3_range_proxy.dart';
-import 'package:cineseed_backend/streaming/segment_producer.dart';
-import 'package:cineseed_backend/streaming/segments.dart';
-import 'package:cineseed_backend/streaming/transcode_pool.dart';
+import 'package:cineseed_streaming/cineseed_streaming.dart';
 
 Future<void> main(List<String> args) async {
   final urlFile = args.isNotEmpty ? args.first : '/tmp/hlsgate/url.txt';
@@ -49,8 +42,6 @@ Future<void> main(List<String> args) async {
     boundaries: boundaries,
     producerBoundaries: producerBoundaries,
     groupStart: groupStart,
-    fileName: 'probe',
-    urlExpiresAt: DateTime.now().add(const Duration(hours: 5)),
   );
 
   final gen = SegmentGenerator(

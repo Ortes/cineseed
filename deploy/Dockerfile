@@ -34,11 +34,13 @@ COPY pubspec.yaml pubspec.lock ./
 COPY shared/pubspec.yaml shared/
 COPY backend/pubspec.yaml backend/
 COPY frontend/pubspec.yaml frontend/
+COPY packages/cineseed_streaming/pubspec.yaml packages/cineseed_streaming/
 RUN flutter pub get
 
 COPY shared/ shared/
 COPY backend/ backend/
 COPY frontend/ frontend/
+COPY packages/ packages/
 
 # Baked into the Flutter bundle at compile time. Empty value → the app
 # uses same-origin, which is what we want in prod (the Dart backend
