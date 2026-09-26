@@ -52,3 +52,8 @@ docs/
 *.log
 README.md
 CLAUDE.md
+
+# Personal ops files and agent config — never part of the build context
+private/
+.claude/
+CLAUDE.local.md

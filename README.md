@@ -60,6 +60,7 @@ Flutter Web  ──►  Dart backend (shelf, 1 binary, serves the web build too)
 ## Getting started (dev)
 
 ```bash
+flutter pub get             # at the repo root (pub workspace, one lockfile)
 cp .env.example .env        # fill in tracker, Transmission, S3 (see comments)
 cd backend && dart run bin/server.dart
 ```
@@ -68,6 +69,8 @@ cd backend && dart run bin/server.dart
 cd frontend && flutter run -d web-server --web-port 8090
 # the frontend targets http://localhost:8080 by default (CINESEED_API_BASE dart-define)
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks CI runs.
 
 ## Configuration
 

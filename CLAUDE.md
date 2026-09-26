@@ -35,7 +35,8 @@ the top of `build` — no `AutomaticKeepAliveClientMixin` shell needed.
 
 ## Workflow
 
-Work directly on `main` — no worktrees, no feature branches for this project.
+One branch + PR per change; CI (`.github/workflows/ci.yml`) must pass before merging to
+`main`. No worktrees. The repo is a pub workspace: run `flutter pub get` at the root.
 
 ## Testing the frontend
 
