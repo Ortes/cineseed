@@ -60,6 +60,15 @@ in the server's `.env`, and recreates only the cineseed service. Targets come fr
 `deploy/docker-compose.override.yml` (gitignored). The server-side `.env` holds all
 runtime envvars (chmod 600).
 
+## Suggestions
+
+`/api/suggestions` reads C411's **site** API (`/api/torrents`, same key as a Bearer token),
+not Torznab: only it filters by film year. A daily background build fetches the whole
+year (plus last year from January to March), finds each film's TMDB id (title search,
+else C411's per-torrent `externalIds`) and stores everything in SQLite
+(`CINESEED_DATA_DIR/cineseed.db`), so only new films cost lookups. C411 allows 1200
+requests/min per key; `C411Catalog` paces itself at 2/s. See `tracker/suggestions.dart`.
+
 ## Streaming — watch-while-downloading
 
 Torrents are added with **sequential download** so pieces fill front-to-back, and download to

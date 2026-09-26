@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/providers.dart';
 import 'release_row.dart';
@@ -192,11 +193,13 @@ class _FilmsList extends ConsumerWidget {
   static int _max(int a, int b) => a > b ? a : b;
 }
 
+const _cellWidth = 180.0;
+
 /// Grid of [FilmGridCell]s. ~180 px cells. Poster (2:3) = 180×270. Below:
 /// title + year + chip row (quality / languages). 180/0.48 ≈ 375 total →
 /// ~105 px for the text block. Keeps a 4K/HQ + VF/MULTI/VOSTFR chip row.
 const filmGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
-  maxCrossAxisExtent: 180,
+  maxCrossAxisExtent: _cellWidth,
   mainAxisSpacing: 18,
   crossAxisSpacing: 14,
   childAspectRatio: 0.48,
@@ -211,6 +214,8 @@ class FilmGridCell extends HookConsumerWidget {
     required this.tmdbId,
     required this.releases,
     this.movie,
+    this.allocineId,
+    this.showReleaseDate = false,
   });
   final MediaType mediaType;
   final int tmdbId;
@@ -218,6 +223,13 @@ class FilmGridCell extends HookConsumerWidget {
 
   /// TMDB metadata the caller already has; fetched by [tmdbId] when null.
   final TmdbMovie? movie;
+
+  /// Links the poster to the film's AlloCiné page; to an AlloCiné search when
+  /// null.
+  final String? allocineId;
+
+  /// The full release date under the title (`12 Sep 2026`), not just the year.
+  final bool showReleaseDate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -234,11 +246,16 @@ class FilmGridCell extends HookConsumerWidget {
     ]..sort((a, b) => b.seeders.compareTo(a.seeders))).first;
     final parsed = ReleaseTags.cleanTitle(canonical.title);
     final title = movie?.title ?? parsed.name;
-    final year = movie?.year ?? parsed.year;
+    final year = showReleaseDate && movie?.releaseDate != null
+        ? _longDate(movie!.releaseDate!)
+        : movie?.year ?? parsed.year;
     final poster = _resizePoster(movie?.posterUrl, 'w342');
 
-    final qualities = _qualityTags(releases);
-    final langs = _langTags(releases);
+    // Parsed once per cell, not on every hover repaint of a long grid.
+    final (qualities, langs) = useMemoized(
+      () => (_qualityTags(releases), _langTags(releases)),
+      [releases],
+    );
 
     const radius = 12.0;
     return MouseRegion(
@@ -288,6 +305,14 @@ class FilmGridCell extends HookConsumerWidget {
                             Image.network(
                               poster,
                               fit: BoxFit.cover,
+                              // Decoded at the cell's size, not the file's:
+                              // keeps a long grid's image cache from churning.
+                              cacheWidth:
+                                  (_cellWidth *
+                                          MediaQuery.devicePixelRatioOf(
+                                            context,
+                                          ))
+                                      .ceil(),
                               errorBuilder: (_, _, _) =>
                                   _PosterPlaceholder(title: title),
                             )
@@ -300,6 +325,26 @@ class FilmGridCell extends HookConsumerWidget {
                             child: _Badge(
                               icon: Icons.layers_outlined,
                               label: '${releases.length}',
+                            ),
+                          ),
+                          Positioned(
+                            left: 8,
+                            bottom: 8,
+                            child: Tooltip(
+                              message: allocineId != null
+                                  ? 'Open on AlloCiné'
+                                  : 'Search on AlloCiné',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(999),
+                                onTap: () => launchUrl(
+                                  _allocineUrl(allocineId, movie, title),
+                                  webOnlyWindowName: '_blank',
+                                ),
+                                child: const _Badge(
+                                  icon: Icons.open_in_new_rounded,
+                                  label: 'AlloCiné',
+                                ),
+                              ),
                             ),
                           ),
                           // TV shows get a marker so they're not mistaken for
@@ -444,6 +489,34 @@ List<String> _langTags(List<TorrentResult> rs) {
         return ai.compareTo(bi);
       });
   return ordered;
+}
+
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// `2026-09-12` → `12 Sep 2026`; [iso] unchanged when it isn't a date.
+String _longDate(String iso) {
+  final d = DateTime.tryParse(iso);
+  return d == null ? iso : '${d.day} ${_months[d.month - 1]} ${d.year}';
+}
+
+/// The film's AlloCiné page when its id is known, else an AlloCiné search:
+/// by original title when it's in Latin script, since TMDB's title is the
+/// English one and AlloCiné knows the French and original ones.
+Uri _allocineUrl(String? allocineId, TmdbMovie? movie, String title) {
+  if (allocineId != null) {
+    return Uri.parse(
+      'https://www.allocine.fr/film/fichefilm_gen_cfilm=$allocineId.html',
+    );
+  }
+  final original = movie?.originalTitle;
+  final latin =
+      original != null && RegExp(r'^[\u0000-\u024F]*$').hasMatch(original);
+  return Uri.https('www.allocine.fr', '/rechercher/', {
+    'q': latin ? original : title,
+  });
 }
 
 /// Swap the TMDB image-CDN size segment (`/w500/` → `/w342/`, etc.). Safe

@@ -39,6 +39,36 @@ class TmdbClient {
     dateKey: 'first_air_date',
   );
 
+  /// TMDB's `/search/movie` hits for [query] released in [year], best match
+  /// first, with their titles in [language].
+  Future<List<({int id, String title, String originalTitle})>> searchMovie(
+    String query, {
+    int? year,
+    String language = 'fr-FR',
+  }) async {
+    final uri = Uri.parse('$_apiBase/search/movie').replace(
+      queryParameters: {
+        'api_key': apiKey,
+        'query': query,
+        'language': language,
+        'year': ?year?.toString(),
+      },
+    );
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw StateError('TMDB search "$query" → HTTP ${res.statusCode}');
+    }
+    final results = (jsonDecode(res.body) as Map)['results'] as List;
+    return [
+      for (final r in results.cast<Map<String, dynamic>>())
+        (
+          id: (r['id'] as num).toInt(),
+          title: r['title'] as String? ?? '',
+          originalTitle: r['original_title'] as String? ?? '',
+        ),
+    ];
+  }
+
   Future<TmdbMovie?> _fetch(
     String kind,
     int id,

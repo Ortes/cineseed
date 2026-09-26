@@ -10,11 +10,13 @@ import 'package:shelf_static/shelf_static.dart';
 
 import 'api.dart';
 import 'config.dart';
+import 'database.dart';
 import 'media/torrent_media_resolver.dart';
 import 'storage/s3_offloader.dart';
 import 'storage/s3_signer.dart';
 import 'torrent/torrent_client.dart';
 import 'torrent/transmission_client.dart';
+import 'tracker/c411_catalog.dart';
 import 'tracker/torznab_tracker.dart';
 import 'tracker/tracker_connector.dart';
 import 'tracker/tmdb_client.dart';
@@ -152,8 +154,23 @@ Future<CineseedServer> startServer(
   // side effect of an incoming request.
   hls.startSweeping();
 
+  final dataDir = config.dataDir;
+  final db = dataDir == null
+      ? CineseedDb.memory()
+      : CineseedDb.open(
+          '${(Directory(dataDir)..createSync(recursive: true)).path}/cineseed.db',
+        );
+  // Suggestions read C411's own site API, beside its Torznab feed.
+  final catalog = Uri.parse(config.trackerBaseUrl).host == 'c411.org'
+      ? C411Catalog(
+          baseUrl: config.trackerBaseUrl,
+          apiKey: config.trackerApiKey,
+        )
+      : null;
   final api = buildApiRouter(
     tracker: tracker,
+    catalog: catalog,
+    db: db,
     client: client,
     offload: offload,
     downloadDir: config.downloadDir,
@@ -201,6 +218,7 @@ Future<CineseedServer> startServer(
   return CineseedServer._(server, () async {
     await server.close(force: true);
     api.dispose();
+    db.close();
     hls.dispose();
     await producerManager.killAll();
     await proxy.stop();

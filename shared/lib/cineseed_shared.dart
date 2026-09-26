@@ -10,3 +10,4 @@ export 'src/models/torrent_state.dart';
 export 'src/models/stream_link.dart';
 export 'src/models/tmdb_movie.dart';
 export 'src/util/release_tags.dart';
+export 'src/util/suggestion_sort.dart';

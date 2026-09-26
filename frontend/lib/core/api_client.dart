@@ -57,8 +57,8 @@ class ApiClient {
         .toList();
   }
 
-  /// The films among the tracker's latest movie releases, best TMDB rating
-  /// first.
+  /// This year's films on C411 (last year's too from January to March), for
+  /// the Suggestions tab to sort.
   Future<List<FilmSuggestion>> suggestions() async {
     final res = await _dio.get('/api/suggestions');
     return (res.data as List)

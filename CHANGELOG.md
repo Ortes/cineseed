@@ -6,9 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ## [Unreleased]
 
 ### Added
-- Suggestions tab: the films among the tracker's latest 100 movie releases, best TMDB
-  rating first, discounted up to 20 % with age so new films surface
-  (`GET /api/suggestions`). Film cards now show the TMDB rating and vote count.
+- Suggestions tab (C411 only): this year's films on C411 (last year's too from January to
+  March), sorted by rating, release date, or both ("Recommended"), each linked to
+  AlloCiné (`GET /api/suggestions`, rebuilt daily). Film cards show the TMDB rating and
+  vote count.
+- SQLite database in `CINESEED_DATA_DIR` (`cineseed.db`), so the suggestions survive a
+  restart. The image is now built with `dart build cli` (SQLite ships in
+  `/opt/cineseed/lib`); the entrypoint moved to `/opt/cineseed/bin/server`.
+- Caddy compresses the JSON API too (not `/api/file`, `/api/hls`).
 - In-app playback while downloading: the player starts seconds after a download does,
   streaming HLS from the local copy (only verified pieces are read), and switches to S3
   without a restart once the file is uploaded and freed.

@@ -1,113 +1,224 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:cineseed_backend/src/database.dart';
+import 'package:cineseed_backend/src/tracker/c411_catalog.dart';
 import 'package:cineseed_backend/src/tracker/suggestions.dart';
-import 'package:cineseed_backend/src/tracker/torznab_tracker.dart';
-import 'package:cineseed_backend/src/tracker/tracker_connector.dart';
 import 'package:cineseed_shared/cineseed_shared.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
 
-String _rss(Iterable<int> ids) =>
-    '<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>'
-    '${ids.map((i) => '<item><title>Film.$i</title>'
-        '<torznab:attr name="infohash" value="h$i"/>'
-        '<torznab:attr name="category" value="2000"/></item>').join()}'
-    '</channel></rss>';
+Map<String, Object?> _torrent(String name, String hash, String? poster) => {
+  'name': name,
+  'infoHash': hash,
+  'posterUrl': poster,
+  'seeders': 3,
+  'completions': 40,
+  'size': 1000,
+  'createdAt': '2026-09-01T10:00:00Z',
+};
 
-class _FakeTracker implements TrackerConnector {
-  _FakeTracker(this.releases);
-  final List<TorrentResult> releases;
-
-  @override
-  Future<List<TorrentResult>> latestMovies(int count) async => releases;
-
-  @override
-  Future<List<TorrentResult>> search(String query, {String? type}) =>
-      throw UnimplementedError();
-
-  @override
-  Future<List<int>> fetchTorrent(String infoHash) => throw UnimplementedError();
-}
-
-TorrentResult _release(String hash, int? tmdbId) => TorrentResult(
-  title: hash,
-  infoHash: hash,
-  tmdbId: tmdbId,
-  mediaType: MediaType.movie,
+/// A C411 site API: [byYear] torrents in pages of 2, and [tmdbByHash] ids.
+C411Catalog _c411(
+  Map<int, List<Map<String, Object?>>> byYear, {
+  Map<String, int> tmdbByHash = const {},
+  List<String>? log,
+  List<String>? details,
+}) => C411Catalog(
+  baseUrl: 'https://c411.test',
+  apiKey: 'k',
+  requestInterval: Duration.zero,
+  client: MockClient((req) async {
+    expect(req.headers['Authorization'], 'Bearer k');
+    final q = req.url.queryParameters;
+    if (req.url.path == '/api/torrents') {
+      log?.add(q['year']!);
+      expect(q['subcat'], '6,1,4');
+      final all = byYear[int.parse(q['year']!)] ?? [];
+      final page = int.parse(q['page']!);
+      return http.Response(
+        jsonEncode({
+          'data': all.skip((page - 1) * 2).take(2).toList(),
+          'meta': {'totalPages': (all.length / 2).ceil()},
+        }),
+        200,
+      );
+    }
+    final hash = req.url.pathSegments.last;
+    details?.add(hash);
+    return http.Response(
+      jsonEncode({
+        'externalIds': [
+          if (tmdbByHash[hash] case final id?)
+            {'kind': 'tmdb_movie', 'value': '$id'},
+        ],
+      }),
+      200,
+    );
+  }),
 );
 
 void main() {
-  test('latestMovies pages past the indexer page size', () async {
-    final offsets = <String?>[];
-    final tracker = TorznabTracker(
-      baseUrl: 'http://tracker',
-      apiKey: 'k',
-      client: MockClient((req) async {
-        final q = req.url.queryParameters;
-        expect(q['cat'], '2000');
-        expect(q.containsKey('q'), isFalse);
-        offsets.add(q['offset']);
-        // A 40-per-page indexer holding 90 releases.
-        final start = int.parse(q['offset']!);
-        final end = (start + 40).clamp(0, 90);
-        return http.Response(_rss([for (var i = start; i < end; i++) i]), 200);
-      }),
+  final now = DateTime(2026, 9, 26);
+
+  test('titleAndYear and normalizeTitle read release names', () {
+    expect(titleAndYear('Le.Dernier.Refuge.2026.MULTi.1080p-GRP'), (
+      'Le Dernier Refuge',
+      2026,
+    ));
+    expect(titleAndYear('Blade.Runner.2049.2017.1080p').$2, 2017);
+    expect(normalizeTitle('Don t Say Good Luck'), "don t say good luck");
+    expect(
+      normalizeTitle('La Venus Electrique'),
+      normalizeTitle('La Vénus électrique'),
     );
-    final latest = await tracker.latestMovies(100);
-    expect(latest.map((r) => r.infoHash), [for (var i = 0; i < 90; i++) 'h$i']);
-    expect(offsets, ['0', '40', '80', '90']);
   });
 
-  test('latestMovies stops on an indexer that ignores offset', () async {
-    final tracker = TorznabTracker(
-      baseUrl: 'http://tracker',
-      apiKey: 'k',
-      client: MockClient(
-        (_) async => http.Response(_rss([for (var i = 0; i < 40; i++) i]), 200),
-      ),
+  test('C411Catalog pages through a year and reads TMDB ids', () async {
+    final catalog = _c411(
+      {
+        2026: [for (var i = 0; i < 5; i++) _torrent('F.$i.2026', 'h$i', 'p$i')],
+      },
+      tmdbByHash: {'h1': 11},
     );
-    expect(await tracker.latestMovies(100), hasLength(40));
+    final films = await catalog.films(2026);
+    expect(films.map((t) => t.infoHash), ['h0', 'h1', 'h2', 'h3', 'h4']);
+    expect(films.first.toRelease(7).grabs, 40);
+    expect(await catalog.tmdbId('h1'), 11);
+    expect(await catalog.tmdbId('h0'), isNull);
   });
 
-  test('latestByRating groups releases by film, best rated first', () async {
+  test('recentFilms: the years of the last 3 months, TMDB, C411', () async {
+    final years = <String>[];
+    final details = <String>[];
+    final catalog = _c411(
+      {
+        2026: [
+          _torrent('Film.A.2026.1080p', 'a1', 'pa'),
+          _torrent('Film.A.2026.2160p', 'a2', 'pa'),
+          _torrent(
+            'Film.A.VFF.2026.720p',
+            'a3',
+            'pa2',
+          ), // re-upload, new poster
+          _torrent('Titre.Francais.2026.1080p', 'b1', 'pb'),
+          _torrent('Old.Film.2026.1080p', 'c1', 'pc'),
+          _torrent('Unknown.Everywhere.2026.1080p', 'e1', 'pe'),
+        ],
+        2025: [_torrent('Last.Year.2025.1080p', 'd1', 'pd')],
+      },
+      // Neither title is TMDB's (a French one, a tag before the year).
+      tmdbByHash: {'b1': 2, 'a3': 1},
+      log: years,
+      details: details,
+    );
+    final searched = <String>[];
+    Future<List<({int id, String title, String originalTitle})>> search(
+      String q, {
+      int? year,
+    }) async {
+      searched.add(q);
+      return switch (q) {
+        'Film A' => [(id: 1, title: 'Film A', originalTitle: 'Film A')],
+        'Old Film' => [(id: 3, title: 'Old Film', originalTitle: 'Old Film')],
+        'Last Year' => [
+          (id: 4, title: 'Last Year', originalTitle: 'Last Year'),
+        ],
+        _ => [(id: 99, title: 'Something else', originalTitle: 'Else')],
+      };
+    }
+
     const movies = {
-      1: TmdbMovie(id: 1, title: 'Fine', voteAverage: 6.1, voteCount: 50),
-      2: TmdbMovie(id: 2, title: 'Great', voteAverage: 8.4, voteCount: 900),
-      3: TmdbMovie(id: 3, title: 'Unrated', voteAverage: 0, voteCount: 0),
+      1: TmdbMovie(id: 1, title: 'Film A', releaseDate: '2026-09-01'),
+      2: TmdbMovie(id: 2, title: 'French title', releaseDate: '2026-07-10'),
+      3: TmdbMovie(id: 3, title: 'Old Film', releaseDate: '2026-03-01'),
+      4: TmdbMovie(id: 4, title: 'Last Year', releaseDate: '2025-12-20'),
     };
-    final films = await latestByRating(
-      _FakeTracker([
-        _release('a', 1),
-        _release('b', 3),
-        _release('c', 2),
-        _release('d', 1),
-        _release('e', null), // no TMDB id: nothing to rank by
-        _release('f', 404), // unknown to TMDB
-      ]),
-      (id) async => movies[id],
+    final tmdbIds = <String, int?>{};
+    Future<List<FilmSuggestion>> run(DateTime at) => recentFilms(
+      catalog: catalog,
+      search: search,
+      movie: (id) async => movies[id],
+      tmdbIds: tmdbIds,
+      now: at,
     );
-    expect(films.map((f) => f.movie.title), ['Great', 'Fine', 'Unrated']);
-    expect(films[1].releases.map((r) => r.infoHash), ['a', 'd']);
+
+    final films = await run(now);
+    expect(films.map((f) => f.movie.id), [1, 2, 3]); // all of this year's
+    expect(films.first.releases.map((r) => r.infoHash), ['a1', 'a2', 'a3']);
+    expect(details, ['a3', 'b1', 'e1']); // no TMDB match: asked C411
+    expect(years.toSet(), {'2026'}); // September: this year only
+    expect(tmdbIds, {'pa': 1, 'pa2': 1, 'pb': 2, 'pc': 3, 'pe': null});
+
+    searched.clear();
+    details.clear();
+    await run(now);
+    expect([...searched, ...details], isEmpty); // known films cost nothing
+
+    years.clear();
+    final february = await run(DateTime(2026, 2, 10)); // reaches into 2025
+    expect(years.toSet(), {'2026', '2025'});
+    expect(february.map((f) => f.movie.id), contains(4));
+    expect(tmdbIds, contains('pd'));
+
+    await run(now); // back to this year only: last year's film is forgotten
+    expect(tmdbIds, isNot(contains('pd')));
   });
 
-  test('age discounts the rating, but never buries a classic', () async {
-    TmdbMovie m(int id, double rating, String date) => TmdbMovie(
-      id: id,
-      title: '$id',
-      voteAverage: rating,
-      voteCount: 100,
-      releaseDate: date,
+  test('SuggestionsCache serves the saved list after a restart', () async {
+    final dir = await Directory.systemTemp.createTemp('suggestions');
+    addTearDown(() => dir.delete(recursive: true));
+    final path = '${dir.path}/cineseed.db';
+    const film = FilmSuggestion(
+      movie: TmdbMovie(id: 7, title: 'Film'),
+      releases: [],
     );
-    final movies = {
-      1: m(1, 7.5, '1994-10-14'), // same rating, 32 years older than 2
-      2: m(2, 7.5, '2026-03-01'),
-      3: m(3, 8.6, '1994-10-14'), // a classic
-      4: m(4, 6.6, '2026-06-01'), // a mediocre new film
-    };
-    final films = await latestByRating(
-      _FakeTracker([for (final id in movies.keys) _release('$id', id)]),
-      (id) async => movies[id],
-      now: DateTime(2026, 9, 26),
+    final db = CineseedDb.open(path);
+    final first = SuggestionsCache(
+      build: (ids) async => [film],
+      allocineIds: (ids) async => {for (final id in ids) id: 'ac$id'},
+      db: db,
     );
-    expect(films.map((f) => f.movie.id), [2, 3, 4, 1]);
+    await first.json();
+    await Future<void>.delayed(Duration.zero); // the Wikidata lookup lands
+    db.close();
+
+    final reopened = CineseedDb.open(path);
+    addTearDown(reopened.close);
+    final restarted = SuggestionsCache(
+      build: (ids) => throw StateError('must not rebuild'),
+      allocineIds: (ids) => throw StateError('must not look up'),
+      db: reopened,
+    )..start();
+    addTearDown(restarted.dispose);
+    final served = jsonDecode(utf8.decode(await restarted.json()));
+    expect(served, [containsPair('allocineId', 'ac7')]);
+  });
+
+  test('sortSuggestions: rating weighed by votes, recency, both', () {
+    FilmSuggestion f(int id, double? rating, int votes, String date) =>
+        FilmSuggestion(
+          movie: TmdbMovie(
+            id: id,
+            title: '$id',
+            voteAverage: rating,
+            voteCount: votes,
+            releaseDate: date,
+          ),
+          releases: const [],
+        );
+    final films = [
+      f(1, 9.0, 3, '2026-09-01'), // barely voted
+      f(2, 8.3, 2000, '2026-07-01'), // well rated, three months old
+      f(3, 7.2, 400, '2026-09-20'), // decent, just out
+      f(4, null, 0, '2026-09-25'), // unrated, newest
+    ];
+    List<int> ids(SuggestionSort s) => [
+      for (final x in sortSuggestions(films, s, now)) x.movie.id,
+    ];
+    expect(ids(SuggestionSort.rating), [2, 3, 1, 4]);
+    expect(ids(SuggestionSort.releaseDate), [4, 3, 1, 2]);
+    expect(ids(SuggestionSort.recommended), [3, 2, 4, 1]);
   });
 }

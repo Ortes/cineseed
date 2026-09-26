@@ -56,6 +56,9 @@ class Config {
   final int hlsSessionIdleTtl; // seconds a session may idle before eviction
   final String?
   hlsProducerTemp; // temp root for produced segments (null => system temp)
+  // Holds the SQLite database (the suggestions list). Null: an in-memory one,
+  // and a restart rebuilds the suggestions from scratch (minutes).
+  final String? dataDir;
   // Verbose debug mode: full ffmpeg/producer/session logging + keep all segment
   // files on disk (no cleanup). Exposed to the frontend via GET /api/config.
   final bool debug;
@@ -87,6 +90,7 @@ class Config {
     required this.hlsMaxSessions,
     required this.hlsSessionIdleTtl,
     required this.hlsProducerTemp,
+    required this.dataDir,
     required this.debug,
   });
 
@@ -155,6 +159,7 @@ class Config {
       hlsSessionIdleTtl:
           int.tryParse(optional('HLS_SESSION_IDLE_TTL', '600')) ?? 600,
       hlsProducerTemp: env['HLS_PRODUCER_TEMP'],
+      dataDir: env['CINESEED_DATA_DIR'],
       debug: optional('CINESEED_DEBUG', 'false').toLowerCase() == 'true',
     );
   }

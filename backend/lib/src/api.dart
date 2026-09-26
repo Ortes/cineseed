@@ -7,14 +7,17 @@ import 'package:hls_remux/hls_remux.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import 'database.dart';
 import 'storage/s3_offloader.dart';
 import 'torrent/local_file.dart';
 import 'torrent/stream_id.dart';
 import 'torrent/torrent_client.dart';
 import 'torrent/torrent_local_file.dart';
+import 'tracker/c411_catalog.dart';
 import 'tracker/suggestions.dart';
 import 'tracker/tmdb_client.dart';
 import 'tracker/tracker_connector.dart';
+import 'tracker/wikidata.dart';
 
 const _contentTypes = {
   '.mkv': 'video/x-matroska',
@@ -52,11 +55,25 @@ String _contentTypeFor(String name) {
   required HlsSessionManager hls,
   required SegmentGenerator segments,
   TmdbClient? tmdb,
+  C411Catalog? catalog,
+  required CineseedDb db,
   bool debug = false,
 }) {
   final r = Router();
 
   offload?.ensureSweep(); // boot: upload any finished-but-not-on-S3, then idle
+  final suggestions = tmdb == null || catalog == null
+      ? null
+      : (SuggestionsCache(
+          build: (tmdbIds) => recentFilms(
+            catalog: catalog,
+            search: (q, {year}) => tmdb.searchMovie(q, year: year),
+            movie: tmdb.movie,
+            tmdbIds: tmdbIds,
+          ),
+          allocineIds: allocineIds,
+          db: db,
+        )..start());
 
   // Runtime config for the frontend. The web build is baked into the image, so
   // it can't read env vars — it reads `debugMode` here at startup to mirror the
@@ -102,14 +119,19 @@ String _contentTypeFor(String name) {
     return _json(results.map((e) => e.toJson()).toList());
   });
 
-  // Suggestions: the films among the tracker's latest 100 movie releases, best
-  // TMDB rating first. 404 without TMDB — the rating comes from there.
+  // Suggestions: the films released last on C411, rebuilt daily; the frontend
+  // sorts them. 404 without C411 or TMDB.
   r.get('/suggestions', (Request req) async {
-    if (tmdb == null) {
-      return _json({'error': 'tmdb disabled (set TMDB_API_KEY)'}, 404);
+    if (suggestions == null) {
+      return _json({'error': 'suggestions need C411 and TMDB_API_KEY'}, 404);
     }
-    final films = await latestByRating(tracker, tmdb.movie);
-    return _json(films.map((f) => f.toJson()).toList());
+    return Response.ok(
+      await suggestions.json(),
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+      },
+    );
   });
 
   // Raw .torrent bytes (mostly internal/debug).
@@ -581,7 +603,13 @@ String _contentTypeFor(String name) {
     );
   });
 
-  return (router: r, dispose: () => offload?.dispose());
+  return (
+    router: r,
+    dispose: () {
+      offload?.dispose();
+      suggestions?.dispose();
+    },
+  );
 }
 
 /// `attachment` with the file's base name, ASCII-safe plus RFC 5987 for the

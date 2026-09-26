@@ -51,9 +51,11 @@ RUN cd frontend && flutter build web --wasm --release \
 
 # Docker names the arch amd64, Dart names it x64.
 ARG TARGETARCH
-RUN cd backend && dart compile exe bin/server.dart \
+# `dart build`, not `dart compile`: package:sqlite3 bundles SQLite through a
+# build hook, as bundle/lib/libsqlite3.so next to bundle/bin/server.
+RUN cd backend && dart build cli -t bin/server.dart \
     --target-os=linux --target-arch="$([ "$TARGETARCH" = amd64 ] && echo x64 || echo "$TARGETARCH")" \
-    -o /cineseed-server
+    -o /cineseed-build
 
 # ─── Stage 2: slim runtime (per target platform) ───────────────────
 FROM debian:bookworm-slim AS runtime
@@ -65,7 +67,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /cineseed-server        /usr/local/bin/cineseed-server
+COPY --from=build /cineseed-build/bundle   /opt/cineseed
 COPY --from=build /app/frontend/build/web /app/public
 
 # These two ENV are the only defaults the image enforces. Everything else
@@ -75,4 +77,4 @@ ENV PUBLIC_DIR=/app/public
 ENV PORT=8080
 
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/cineseed-server"]
+ENTRYPOINT ["/opt/cineseed/bin/server"]

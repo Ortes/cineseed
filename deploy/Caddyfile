@@ -1,14 +1,14 @@
 # The served domain comes from the CINESEED_DOMAIN environment variable
 # (set in the .env next to docker-compose.yml, passed via env_file).
 {$CINESEED_DOMAIN} {
-    # Compress the Flutter web build on the fly. Everything under /api is
-    # excluded so Range/206 video streaming (/api/file, /api/stream) is never
+    # Compress the Flutter web build and the JSON API on the fly. The video
+    # routes are excluded so Range/206 streaming (/api/file, /api/hls) is never
     # touched. zstd first (fast, great ratio, cheap on a small CPU),
     # gzip as the fallback for older clients. The explicit content-type match
     # is required so application/wasm (canvaskit ~7 MB, main.dart.wasm ~2.7 MB)
     # actually gets compressed — it is not in Caddy's default match set.
-    @web not path /api/*
-    encode @web {
+    @compress not path /api/file/* /api/hls/*
+    encode @compress {
         zstd
         gzip
         match {
@@ -24,6 +24,7 @@
     # stable filenames across builds (main.dart.wasm etc.), and shelf_static
     # sends Last-Modified (which changes on each deploy), so a conditional
     # GET returns a cheap 304 instead of re-downloading the whole bundle.
+    @web not path /api/*
     header @web Cache-Control "no-cache"
 
     reverse_proxy localhost:8080
