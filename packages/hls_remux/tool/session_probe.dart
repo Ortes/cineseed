@@ -9,7 +9,7 @@
 // concatenated reads as one continuous, monotonic stream under ffprobe).
 import 'dart:io';
 
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 
 Future<void> main(List<String> args) async {
   final urlFile = args.isNotEmpty ? args.first : '/tmp/hlsgate/url.txt';

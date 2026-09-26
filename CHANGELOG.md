@@ -9,7 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - `package:cineseed_backend` library entry point: `startServer(config, tracker:, client:,
   s3:, tmdb:)` takes optional replacements for each dependency and returns a
   `CineseedServer` with `close()`.
-- `packages/cineseed_streaming`: the live-HLS engine as a torrent-agnostic package.
+- `packages/hls_remux`: the live-HLS engine as a torrent-agnostic package.
   Sources come from a `MediaSourceResolver` (`HttpMediaSource` through the caching
   range proxy, or `FileMediaSource` served by the new loopback `LocalRangeServer`).
 

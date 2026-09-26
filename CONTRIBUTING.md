@@ -2,7 +2,7 @@
 
 ## Setup
 
-The repo is a pub workspace (`shared`, `backend`, `frontend`, `packages/cineseed_streaming`)
+The repo is a pub workspace (`shared`, `backend`, `frontend`, `packages/hls_remux`)
 with one root `pubspec.lock`.
 Resolve it with Flutter; plain `dart pub get` can't resolve a Flutter member.
 
@@ -21,10 +21,10 @@ CI runs exactly this; run it locally first:
 
 ```bash
 dart format .
-dart analyze --fatal-infos shared backend packages/cineseed_streaming
+dart analyze --fatal-infos shared backend packages/hls_remux
 (cd frontend && flutter analyze)
 (cd backend && dart test)
-(cd packages/cineseed_streaming && dart test)   # needs ffmpeg on PATH
+(cd packages/hls_remux && dart test)   # needs ffmpeg on PATH
 (cd frontend && flutter test --platform chrome)   # web-only imports → Chrome
 ```
 

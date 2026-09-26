@@ -1,4 +1,4 @@
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 
 import '../storage/s3_signer.dart';
 import '../torrent/local_file.dart';

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_cors_headers/shelf_cors_headers.dart';
@@ -44,6 +44,7 @@ Future<CineseedServer> startServer(
   S3Signer? s3,
   TmdbClient? tmdb,
 }) async {
+  Log.prefix = 'cineseed';
   Log.enabled = config.debug;
   if (config.debug) {
     Log.d('boot', 'CINESEED_DEBUG on: verbose logging + segments kept on disk');

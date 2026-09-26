@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 import 'package:test/test.dart';
 
 /// A controllable stand-in for S3. Honours `Range`, and can be told to truncate

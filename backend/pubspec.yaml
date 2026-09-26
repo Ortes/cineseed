@@ -10,8 +10,8 @@ resolution: workspace
 dependencies:
   cineseed_shared:
     path: ../shared
-  cineseed_streaming:
-    path: ../packages/cineseed_streaming
+  hls_remux:
+    path: ../packages/hls_remux
   http: ^1.6.0
   # Pinned to a fork that fixes + encoding in S3 canonical path (upstream PR:
   # https://github.com/xtyxtyx/minio-dart/pull/114). Revert to `minio: ^3.5.x`

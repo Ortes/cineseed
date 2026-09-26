@@ -34,7 +34,7 @@ COPY pubspec.yaml pubspec.lock ./
 COPY shared/pubspec.yaml shared/
 COPY backend/pubspec.yaml backend/
 COPY frontend/pubspec.yaml frontend/
-COPY packages/cineseed_streaming/pubspec.yaml packages/cineseed_streaming/
+COPY packages/hls_remux/pubspec.yaml packages/hls_remux/
 RUN flutter pub get
 
 COPY shared/ shared/

@@ -11,7 +11,7 @@ import 'segment_ref.dart';
 /// segment, whether to serve from the running producer, wait for it, or
 /// kill-and-restart at a new position (seek or audio-track switch). Key-agnostic:
 /// callers pass the ffmpeg `outputArgs`, boundaries and timescale, so it has no
-/// dependency on the Cineseed session model (extraction-ready).
+/// dependency on the session model.
 class ProducerManager {
   final ProducerConfig config;
   final int maxSessions; // distinct session hashes kept alive

@@ -2,7 +2,7 @@
 // keyframe boundaries. Usage: dart run tool/cues_probe.dart "<presigned-url>"
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 
 class _CountingClient extends http.BaseClient {
   final http.Client _inner = http.Client();

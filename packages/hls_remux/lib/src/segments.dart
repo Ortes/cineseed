@@ -368,7 +368,7 @@ class SegmentGenerator {
 
   String _avcCodec(HlsSession s) {
     // Minimal fallback for H.264 sources; refined codec string would parse
-    // avcC. Most cineseed content is HEVC, so this is rarely hit.
+    // avcC.
     return 'avc1.640028';
   }
 

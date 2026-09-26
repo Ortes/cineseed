@@ -1,4 +1,4 @@
-name: cineseed_streaming
+name: hls_remux
 description: >-
   Live HLS from MKV files over HTTP Range (S3 presigned URLs or local disk):
   keyframe-exact fMP4 segments with video stream-copied, never transcoded.

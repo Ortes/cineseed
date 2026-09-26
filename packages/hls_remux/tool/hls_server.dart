@@ -8,7 +8,7 @@
 // Then open http://localhost:<port>/ in Chrome.
 import 'dart:io';
 
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 
 late HlsSession session;
 late SegmentGenerator gen;

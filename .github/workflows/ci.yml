@@ -33,13 +33,13 @@ jobs:
 
       - run: flutter pub get
       - run: dart format --output=none --set-exit-if-changed .
-      - run: dart analyze --fatal-infos shared backend packages/cineseed_streaming
+      - run: dart analyze --fatal-infos shared backend packages/hls_remux
       - run: flutter analyze
         working-directory: frontend
       - run: dart test
         working-directory: backend
       - run: dart test
-        working-directory: packages/cineseed_streaming
+        working-directory: packages/hls_remux
       # The frontend imports web-only libraries, so its tests run in Chrome.
       - run: flutter test --platform chrome
         working-directory: frontend

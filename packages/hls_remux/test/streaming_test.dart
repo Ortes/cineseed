@@ -1,4 +1,4 @@
-import 'package:cineseed_streaming/cineseed_streaming.dart';
+import 'package:hls_remux/hls_remux.dart';
 import 'package:test/test.dart';
 
 HlsSession _sessionWith(List<AudioTrack> audio) => HlsSession(
