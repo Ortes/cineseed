@@ -66,8 +66,9 @@ class FilmScreen extends HookConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
+        title: SelectableText(
           displayYear != null ? '$displayTitle ($displayYear)' : displayTitle,
+          maxLines: 1,
         ),
       ),
       body: releases.isEmpty
