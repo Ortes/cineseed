@@ -74,7 +74,7 @@ class _LibraryTab extends HookConsumerWidget {
               isDense: true,
               suffixIcon: ValueListenableBuilder<TextEditingValue>(
                 valueListenable: filterController,
-                builder: (_, v, __) => v.text.isEmpty
+                builder: (_, v, _) => v.text.isEmpty
                     ? const SizedBox.shrink()
                     : IconButton(
                         icon: const Icon(Icons.clear_rounded),

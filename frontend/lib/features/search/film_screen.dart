@@ -90,7 +90,7 @@ class FilmScreen extends HookConsumerWidget {
                 Expanded(
                   child: ListView.separated(
                     itemCount: releases.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final sorted = sortReleases(
                         releases,
@@ -156,7 +156,7 @@ class _FilmHeader extends StatelessWidget {
                   width: 100,
                   height: 150,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
+                  errorBuilder: (_, _, _) =>
                       const SizedBox(width: 100, height: 150),
                 ),
               ),

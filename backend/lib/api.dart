@@ -351,8 +351,9 @@ Router buildApiRouter({
   r.post('/torrents', (Request req) async {
     final body = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
     final hash = body['hash'] as String?;
-    if (hash == null || hash.isEmpty)
+    if (hash == null || hash.isEmpty) {
       return _json({'error': 'missing hash'}, 400);
+    }
     final metainfo = await tracker.fetchTorrent(hash);
     await client.addTorrent(metainfo, paused: false);
     stranded.remove(hash); // re-fetching is exactly what un-strands a torrent
@@ -469,7 +470,7 @@ Router buildApiRouter({
     final dir = info.downloadDir.isNotEmpty ? info.downloadDir : downloadDir;
     // While downloading, Transmission (rename-partial-files=true) names the
     // file `<name>.part`; it is renamed to `<name>` on completion.
-    File? _find(String base) {
+    File? find(String base) {
       final f = File(base);
       if (f.existsSync()) return f;
       final p = File('$base.part');
@@ -477,9 +478,9 @@ Router buildApiRouter({
       return null;
     }
 
-    var file = _find('$dir/${tf.name}');
+    var file = find('$dir/${tf.name}');
     if (file == null && incompleteDir.isNotEmpty) {
-      file = _find('$incompleteDir/${tf.name}');
+      file = find('$incompleteDir/${tf.name}');
     }
     if (file == null) {
       return _json({
@@ -714,8 +715,5 @@ Stream<List<int>> _rangeStream(File file, int start, int end) async* {
 Response _json(Object data, [int status = 200, String? cache]) => Response(
   status,
   body: jsonEncode(data),
-  headers: {
-    'Content-Type': 'application/json',
-    if (cache != null) 'Cache-Control': cache,
-  },
+  headers: {'Content-Type': 'application/json', 'Cache-Control': ?cache},
 );

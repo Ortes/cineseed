@@ -9,8 +9,8 @@ import 'tracker_connector.dart';
 /// Generic Torznab connector. Works with Prowlarr, Jackett, or any tracker
 /// exposing a Torznab feed directly.
 ///
-/// - search:   GET {base}/api?t=search&q=<q>&apikey=<key>   → RSS
-/// - download: GET {base}/api?t=get&id=<infoHash>&apikey=<key> → .torrent bytes
+/// - search:   `GET {base}/api?t=search&q=<q>&apikey=<key>` → RSS
+/// - download: `GET {base}/api?t=get&id=<infoHash>&apikey=<key>` → .torrent bytes
 ///   (`t=get` returns a ready-to-add .torrent — no cookie, no CAPTCHA, fully
 ///   automatable.)
 class TorznabTracker implements TrackerConnector {

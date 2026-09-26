@@ -76,7 +76,7 @@ class _SearchBar extends StatelessWidget {
           border: const OutlineInputBorder(),
           suffixIcon: ValueListenableBuilder<TextEditingValue>(
             valueListenable: controller,
-            builder: (_, v, __) => v.text.isEmpty
+            builder: (_, v, _) => v.text.isEmpty
                 ? const SizedBox.shrink()
                 : IconButton(
                     icon: const Icon(Icons.clear),
@@ -280,7 +280,7 @@ class _FilmGridCell extends HookConsumerWidget {
                             Image.network(
                               poster,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
+                              errorBuilder: (_, _, _) =>
                                   _PosterPlaceholder(title: title),
                             )
                           else

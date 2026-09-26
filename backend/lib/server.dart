@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:shelf/shelf.dart';
@@ -128,7 +129,7 @@ Future<HttpServer> startServer(Config config) async {
   // SPA fallback: any non-API 404 is served as index.html so go_router can
   // handle client-side routing for deep-linked URLs like /watch/:hash.
   final indexFile = File('${config.publicDir}/index.html');
-  final Handler spaFallback = (Request req) {
+  FutureOr<Response> spaFallback(Request req) {
     final path = req.url.path;
     if (path == 'api' ||
         path.startsWith('api/') ||
@@ -140,7 +141,7 @@ Future<HttpServer> startServer(Config config) async {
       indexFile.readAsBytesSync(),
       headers: {'content-type': 'text/html; charset=utf-8'},
     );
-  };
+  }
 
   final handler = const Pipeline()
       .addMiddleware(logRequests())

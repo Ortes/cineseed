@@ -29,8 +29,9 @@ class AudioTrack {
   String get label {
     final parts = <String>[];
     if (title != null && title!.isNotEmpty) parts.add(title!);
-    if (language != null && language!.isNotEmpty)
+    if (language != null && language!.isNotEmpty) {
       parts.add(language!.toUpperCase());
+    }
     if (parts.isEmpty) parts.add('Audio ${order + 1}');
     return parts.join(' · ');
   }
@@ -66,8 +67,9 @@ class SubtitleTrack {
   String get label {
     final parts = <String>[];
     if (title != null && title!.isNotEmpty) parts.add(title!);
-    if (language != null && language!.isNotEmpty)
+    if (language != null && language!.isNotEmpty) {
       parts.add(language!.toUpperCase());
+    }
     if (parts.isEmpty) parts.add('Sub ${order + 1}');
     return parts.join(' · ');
   }

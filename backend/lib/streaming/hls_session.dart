@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:typed_data';
 
 import '../log.dart';
@@ -66,7 +65,7 @@ class HlsSession {
   /// for the whole film and was only ever released when the session itself was
   /// evicted. Cues are cheap to re-extract, so a modest window is enough to
   /// serve hls.js's re-requests.
-  final _vtt = LinkedHashMap<String, String>();
+  final _vtt = <String, String>{};
 
   static const _maxVttSegments = 64;
 
@@ -218,7 +217,7 @@ class HlsSessionManager {
   /// producer before the proxy cache is dropped. Receives the stream id.
   final void Function(String id)? onEvict;
 
-  final _cache = LinkedHashMap<String, HlsSession>();
+  final _cache = <String, HlsSession>{};
   final Map<String, Future<HlsSession?>> _building = {};
   Timer? _sweepTimer;
 

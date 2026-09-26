@@ -522,8 +522,9 @@ class S3RangeProxy {
     final sw = debug ? (Stopwatch()..start()) : null;
     if (debug) stderr.writeln('[fetch] $idx getUrl...');
     final req = await _client.getUrl(Uri.parse(e.upstreamUrl));
-    if (debug)
+    if (debug) {
       stderr.writeln('[fetch] $idx got conn @${sw!.elapsedMilliseconds}ms');
+    }
     req.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-$reqEnd');
     final resp = await req.close().timeout(
       upstreamTimeout,
@@ -532,8 +533,9 @@ class S3RangeProxy {
         throw TimeoutException('upstream headers', upstreamTimeout);
       },
     );
-    if (debug)
+    if (debug) {
       stderr.writeln('[fetch] $idx headers @${sw!.elapsedMilliseconds}ms');
+    }
     if (resp.statusCode != HttpStatus.partialContent &&
         resp.statusCode != HttpStatus.ok) {
       await resp.drain<void>();
@@ -555,8 +557,9 @@ class S3RangeProxy {
       dest,
       want > 0 ? want : chunkSize,
     );
-    if (debug)
+    if (debug) {
       stderr.writeln('[fetch] $idx done ${n}B @${sw!.elapsedMilliseconds}ms');
+    }
     // Only meaningful for chunk 0: a 200 means upstream ignored our Range, so
     // these bytes start at file offset 0. Attributing their length to `total`
     // for idx > 0 would record a size for data we did not actually fetch.

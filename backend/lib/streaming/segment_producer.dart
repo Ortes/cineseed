@@ -494,8 +494,9 @@ class SegmentProducer {
 
     if (proc != null) {
       try {
-        if (wasThrottled)
+        if (wasThrottled) {
           proc.kill(ProcessSignal.sigcont); // unpause to accept 'q'
+        }
         proc.stdin.write('q\n');
         await proc.stdin.flush();
       } catch (_) {}

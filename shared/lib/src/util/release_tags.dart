@@ -24,12 +24,12 @@ class ReleaseTags {
 
   /// Ordered list of non-null tags, ready for chip rendering.
   List<String> get chips => [
-    if (language != null) language!,
-    if (resolution != null) resolution!,
-    if (source != null) source!,
-    if (hdr != null) hdr!,
+    ?language,
+    ?resolution,
+    ?source,
+    ?hdr,
     if (audio != null) channels != null ? '$audio $channels' : audio!,
-    if (codec != null) codec!,
+    ?codec,
   ];
 
   static final _resRe = RegExp(

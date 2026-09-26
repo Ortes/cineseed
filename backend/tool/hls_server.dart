@@ -98,7 +98,7 @@ Future<void> _handle(HttpRequest req) async {
     } else if (RegExp(r'^/hls/m/(\d+)/init\.mp4$').firstMatch(p)
         case final m?) {
       final b = await gen.muxedInit(session, int.parse(m.group(1)!));
-      b == null ? await _404(res) : await _mp4(res, b);
+      b == null ? await _notFound(res) : await _mp4(res, b);
     } else if (RegExp(r'^/hls/m/(\d+)/(\d+)\.m4s$').firstMatch(p)
         case final m?) {
       final mux = await gen.muxedSegment(
@@ -106,9 +106,9 @@ Future<void> _handle(HttpRequest req) async {
         int.parse(m.group(1)!),
         int.parse(m.group(2)!),
       );
-      mux == null ? await _404(res) : await _muxed(res, mux);
+      mux == null ? await _notFound(res) : await _muxed(res, mux);
     } else {
-      await _404(res);
+      await _notFound(res);
     }
   } catch (e) {
     stderr.writeln('[hls] ERR $p: $e');
@@ -138,7 +138,7 @@ Future<void> _muxed(HttpResponse res, MuxedSegment mux) async {
   await res.close();
 }
 
-Future<void> _404(HttpResponse res) async {
+Future<void> _notFound(HttpResponse res) async {
   res.statusCode = 404;
   await res.close();
 }
