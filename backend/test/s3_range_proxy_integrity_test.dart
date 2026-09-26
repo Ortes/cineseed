@@ -44,8 +44,10 @@ class PatternUpstream {
         }
         final len = end - start + 1;
         res.statusCode = HttpStatus.partialContent;
-        res.headers
-            .set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$total');
+        res.headers.set(
+          HttpHeaders.contentRangeHeader,
+          'bytes $start-$end/$total',
+        );
         res.headers.contentLength = len;
         if (bodyDelay > Duration.zero) await Future<void>.delayed(bodyDelay);
         const block = 16 * 1024;
@@ -74,7 +76,12 @@ class PatternUpstream {
 /// (the proxy caps a response at maxServeBytes and expects a re-request), and
 /// verifies every byte against the pattern.
 Future<void> fetchAndVerify(
-    HttpClient client, int port, String hash, int start, int end) async {
+  HttpClient client,
+  int port,
+  String hash,
+  int start,
+  int end,
+) async {
   var pos = start;
   while (pos <= end) {
     final req = await client.getUrl(Uri.parse('http://127.0.0.1:$port/$hash'));
@@ -86,8 +93,10 @@ Future<void> fetchAndVerify(
       for (var k = 0; k < d.length; k++) {
         final abs = off + k;
         if (d[k] != _byteAt(abs)) {
-          fail('corrupt byte at offset $abs (range $start-$end): '
-              'got ${d[k]}, want ${_byteAt(abs)}');
+          fail(
+            'corrupt byte at offset $abs (range $start-$end): '
+            'got ${d[k]}, want ${_byteAt(abs)}',
+          );
         }
       }
       off += d.length;
@@ -108,45 +117,47 @@ void main() {
 
   tearDown(() async => up.stop());
 
-  test('serves exact bytes for random overlapping ranges under concurrency',
-      () async {
-    // Tiny chunks and only 4 pool slots, so buffers are recycled constantly and
-    // the cache thrashes — the condition prod hits when playback jumps between
-    // distant regions of a film.
-    final proxy = S3RangeProxy(
-      chunkSize: 64 << 10,
-      maxCacheBytes: 256 << 10, // 4 slots
-      maxServeBytes: 128 << 10,
-      readAheadChunks: 3,
-      maxConcurrent: 6,
-      upstreamTimeout: const Duration(seconds: 10),
-    );
-    await proxy.start();
-    final url = proxy.register('h', 'http://127.0.0.1:${up.port}/o');
-    final port = Uri.parse(url).port;
-    final client = HttpClient()..maxConnectionsPerHost = 16;
-    final rnd = Random(1234);
+  test(
+    'serves exact bytes for random overlapping ranges under concurrency',
+    () async {
+      // Tiny chunks and only 4 pool slots, so buffers are recycled constantly and
+      // the cache thrashes — the condition prod hits when playback jumps between
+      // distant regions of a film.
+      final proxy = S3RangeProxy(
+        chunkSize: 64 << 10,
+        maxCacheBytes: 256 << 10, // 4 slots
+        maxServeBytes: 128 << 10,
+        readAheadChunks: 3,
+        maxConcurrent: 6,
+        upstreamTimeout: const Duration(seconds: 10),
+      );
+      await proxy.start();
+      final url = proxy.register('h', 'http://127.0.0.1:${up.port}/o');
+      final port = Uri.parse(url).port;
+      final client = HttpClient()..maxConnectionsPerHost = 16;
+      final rnd = Random(1234);
 
-    try {
-      for (var round = 0; round < 6; round++) {
-        await Future.wait([
-          for (var i = 0; i < 12; i++)
-            () async {
-              final start = rnd.nextInt(total - 1);
-              final len = 1 + rnd.nextInt(300 << 10);
-              final end = min(total - 1, start + len);
-              await fetchAndVerify(client, port, 'h', start, end);
-            }()
-        ]);
+      try {
+        for (var round = 0; round < 6; round++) {
+          await Future.wait([
+            for (var i = 0; i < 12; i++)
+              () async {
+                final start = rnd.nextInt(total - 1);
+                final len = 1 + rnd.nextInt(300 << 10);
+                final end = min(total - 1, start + len);
+                await fetchAndVerify(client, port, 'h', start, end);
+              }(),
+          ]);
+        }
+      } finally {
+        client.close(force: true);
+        await proxy.stop();
       }
-    } finally {
-      client.close(force: true);
-      await proxy.stop();
-    }
-  }, timeout: const Timeout(Duration(minutes: 3)));
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
 
-  test('a reader abandoned at the write-idle timeout cannot corrupt others',
-      () async {
+  test('a reader abandoned at the write-idle timeout cannot corrupt others', () async {
     // The suspected hazard: `_stream` recycles a chunk's pooled buffer in its
     // `finally` when `res.flush()` times out — but the timeout does not cancel
     // the underlying socket write, so the recycled buffer may still be pending.
@@ -172,8 +183,10 @@ void main() {
     final wedged = <Socket>[];
     for (var i = 0; i < 3; i++) {
       final s = await Socket.connect(InternetAddress.loopbackIPv4, port);
-      s.write('GET /h HTTP/1.1\r\nHost: 127.0.0.1\r\n'
-          'Range: bytes=${i * (512 << 10)}-\r\nConnection: close\r\n\r\n');
+      s.write(
+        'GET /h HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+        'Range: bytes=${i * (512 << 10)}-\r\nConnection: close\r\n\r\n',
+      );
       await s.flush();
       wedged.add(s);
     }
@@ -187,7 +200,7 @@ void main() {
               final start = rnd.nextInt(total - 1);
               final end = min(total - 1, start + 1 + rnd.nextInt(200 << 10));
               await fetchAndVerify(client, port, 'h', start, end);
-            }()
+            }(),
         ]);
       }
     } finally {
@@ -199,8 +212,7 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 3)));
 
-  test('a client that disconnects mid-response cannot corrupt others',
-      () async {
+  test('a client that disconnects mid-response cannot corrupt others', () async {
     // ffmpeg seeks by closing the connection mid-body. That aborts `res.flush()`
     // (or `res.add`) with an error, which unwinds `_stream` through its `finally`
     // and recycles the buffer — while the socket teardown may still hold it.
@@ -225,10 +237,15 @@ void main() {
         await Future.wait([
           for (var i = 0; i < 4; i++)
             () async {
-              final s = await Socket.connect(InternetAddress.loopbackIPv4, port);
-              s.write('GET /h HTTP/1.1\r\nHost: 127.0.0.1\r\n'
-                  'Range: bytes=${rnd.nextInt(total - 1)}-\r\n'
-                  'Connection: close\r\n\r\n');
+              final s = await Socket.connect(
+                InternetAddress.loopbackIPv4,
+                port,
+              );
+              s.write(
+                'GET /h HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+                'Range: bytes=${rnd.nextInt(total - 1)}-\r\n'
+                'Connection: close\r\n\r\n',
+              );
               await s.flush();
               var got = 0;
               await for (final d in s) {
@@ -242,7 +259,7 @@ void main() {
               final start = rnd.nextInt(total - 1);
               final end = min(total - 1, start + 1 + rnd.nextInt(300 << 10));
               await fetchAndVerify(client, port, 'h', start, end);
-            }()
+            }(),
         ]);
       }
     } finally {

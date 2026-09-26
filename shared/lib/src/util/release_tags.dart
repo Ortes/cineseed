@@ -3,7 +3,8 @@
 class ReleaseTags {
   final String? language; // MULTI.VFF, VFF, VFQ, VOSTFR, MULTI...
   final String? resolution; // 480p / 720p / 1080p / 2160p
-  final String? source; // BluRay / WEB-DL / WEBRip / HDLight / Remux / BDMV / ISO
+  final String?
+  source; // BluRay / WEB-DL / WEBRip / HDLight / Remux / BDMV / ISO
   final String? codec; // H.264 / H.265 / x264 / x265 / AV1
   final String? audio; // AAC / AC3 / EAC3 / DTS / DTS-HD / TrueHD / Atmos
   final String? channels; // 5.1 / 7.1 / 2.0
@@ -23,15 +24,18 @@ class ReleaseTags {
 
   /// Ordered list of non-null tags, ready for chip rendering.
   List<String> get chips => [
-        if (language != null) language!,
-        if (resolution != null) resolution!,
-        if (source != null) source!,
-        if (hdr != null) hdr!,
-        if (audio != null) channels != null ? '$audio $channels' : audio!,
-        if (codec != null) codec!,
-      ];
+    if (language != null) language!,
+    if (resolution != null) resolution!,
+    if (source != null) source!,
+    if (hdr != null) hdr!,
+    if (audio != null) channels != null ? '$audio $channels' : audio!,
+    if (codec != null) codec!,
+  ];
 
-  static final _resRe = RegExp(r'\b(2160p|1080p|720p|480p)\b', caseSensitive: false);
+  static final _resRe = RegExp(
+    r'\b(2160p|1080p|720p|480p)\b',
+    caseSensitive: false,
+  );
   static final _sourceRe = RegExp(
     r'\b(BluRay|BDRip|BRRip|BDMV|Remux|WEB-?DL|WEB-?Rip|HDLight|HDRip|HDTV|DVDRip|ISO|4KLight)\b',
     caseSensitive: false,
@@ -44,7 +48,9 @@ class ReleaseTags {
     r'\b(EAC3|E-AC-?3|AC3|AC-?3|AAC|TrueHD|Atmos|DTS-?HD(?:[. -]MA)?|DTS|FLAC|MP3|Opus)\b',
     caseSensitive: false,
   );
-  static final _channelsRe = RegExp(r'(?<![\d.])(7\.1|5\.1|2\.0|2\.1)(?![\d.])');
+  static final _channelsRe = RegExp(
+    r'(?<![\d.])(7\.1|5\.1|2\.0|2\.1)(?![\d.])',
+  );
   static final _hdrRe = RegExp(
     r'\b(DV\.HDR10|HDR10\+|HDR10|HDR|DV|DoVi|Dolby Vision)\b',
     caseSensitive: false,

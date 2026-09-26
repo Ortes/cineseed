@@ -24,8 +24,9 @@ class TorznabTracker implements TrackerConnector {
     http.Client? client,
   }) : _http = client ?? http.Client();
 
-  Uri _api(Map<String, String> params) => Uri.parse('$baseUrl/api')
-      .replace(queryParameters: {...params, 'apikey': apiKey});
+  Uri _api(Map<String, String> params) => Uri.parse(
+    '$baseUrl/api',
+  ).replace(queryParameters: {...params, 'apikey': apiKey});
 
   @override
   Future<List<TorrentResult>> search(String query, {String? type}) async {
@@ -61,8 +62,9 @@ class TorznabTracker implements TrackerConnector {
 
       // infoHash: torznab attr → enclosure ?id= → guid
       var infoHash = attrs['infohash'] ?? '';
-      final enclosureUrl = _firstOrNull(item.findElements('enclosure'))
-          ?.getAttribute('url');
+      final enclosureUrl = _firstOrNull(
+        item.findElements('enclosure'),
+      )?.getAttribute('url');
       if (infoHash.isEmpty && enclosureUrl != null) {
         infoHash = Uri.tryParse(enclosureUrl)?.queryParameters['id'] ?? '';
       }
@@ -72,7 +74,8 @@ class TorznabTracker implements TrackerConnector {
       // Torznab "peers" is total swarm (seeders + leechers); some indexers
       // expose "leechers" directly. Prefer the explicit one.
       final seeders = int.tryParse(attrs['seeders'] ?? '') ?? 0;
-      final leechers = int.tryParse(attrs['leechers'] ?? '') ??
+      final leechers =
+          int.tryParse(attrs['leechers'] ?? '') ??
           (() {
             final peers = int.tryParse(attrs['peers'] ?? '');
             return peers == null ? 0 : (peers - seeders).clamp(0, peers);
@@ -92,18 +95,21 @@ class TorznabTracker implements TrackerConnector {
         }
       }
 
-      results.add(TorrentResult(
-        title: _childText(item, 'title'),
-        infoHash: infoHash,
-        tmdbId: int.tryParse(attrs['tmdbid'] ?? ''),
-        mediaType:
-            MediaType.fromTorznabCategory(int.tryParse(attrs['category'] ?? '')),
-        seeders: seeders,
-        leechers: leechers,
-        grabs: int.tryParse(attrs['grabs'] ?? '') ?? 0,
-        size: int.tryParse(attrs['size'] ?? _childText(item, 'size')) ?? 0,
-        pubDate: pubDate,
-      ));
+      results.add(
+        TorrentResult(
+          title: _childText(item, 'title'),
+          infoHash: infoHash,
+          tmdbId: int.tryParse(attrs['tmdbid'] ?? ''),
+          mediaType: MediaType.fromTorznabCategory(
+            int.tryParse(attrs['category'] ?? ''),
+          ),
+          seeders: seeders,
+          leechers: leechers,
+          grabs: int.tryParse(attrs['grabs'] ?? '') ?? 0,
+          size: int.tryParse(attrs['size'] ?? _childText(item, 'size')) ?? 0,
+          pubDate: pubDate,
+        ),
+      );
     }
     return results;
   }
@@ -124,8 +130,18 @@ DateTime? _parseRfc2822(String raw) {
   ).firstMatch(raw.trim());
   if (m == null) return null;
   const months = {
-    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
+    'Jan': 1,
+    'Feb': 2,
+    'Mar': 3,
+    'Apr': 4,
+    'May': 5,
+    'Jun': 6,
+    'Jul': 7,
+    'Aug': 8,
+    'Sep': 9,
+    'Oct': 10,
+    'Nov': 11,
+    'Dec': 12,
   };
   final mon = months[m.group(2)!];
   if (mon == null) return null;
@@ -134,7 +150,8 @@ DateTime? _parseRfc2822(String raw) {
   if (tz.startsWith('+') || tz.startsWith('-')) {
     final sign = tz[0] == '-' ? -1 : 1;
     offsetMin =
-        sign * (int.parse(tz.substring(1, 3)) * 60 + int.parse(tz.substring(3, 5)));
+        sign *
+        (int.parse(tz.substring(1, 3)) * 60 + int.parse(tz.substring(3, 5)));
   }
   // Build the wall-clock as UTC, then subtract the offset to get true UTC.
   final wall = DateTime.utc(

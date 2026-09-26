@@ -44,52 +44,61 @@ void main() {
             return Completer<void>().future; // never completes, ever
           },
         ),
-        throwsA(isA<TimeoutException>().having(
-            (e) => e.message, 'message', contains('S3 upload of film.mkv'))),
+        throwsA(
+          isA<TimeoutException>().having(
+            (e) => e.message,
+            'message',
+            contains('S3 upload of film.mkv'),
+          ),
+        ),
       );
     });
 
-    test('never cuts off a slow transfer that keeps reporting progress',
-        () async {
-      var sent = 0;
-      await awaitProgress(
-        stallTimeout: _timeout,
-        what: 'upload',
-        run: (progress) async {
-          // Ten quiet stretches, each most of the stall budget: far longer than
-          // the timeout in total, but never silent for it.
-          for (var i = 0; i < 10; i++) {
-            await Future<void>.delayed(_timeout ~/ 2);
-            progress(sent += 1024);
-          }
-        },
-      );
-      expect(sent, 10240);
-    });
-
-    test('drops progress from a transfer that wakes up after being abandoned',
-        () async {
-      final wokeUp = Completer<void>();
-      final seen = <int>[];
-      late void Function(int) report;
-
-      await expectLater(
-        awaitProgress(
+    test(
+      'never cuts off a slow transfer that keeps reporting progress',
+      () async {
+        var sent = 0;
+        await awaitProgress(
           stallTimeout: _timeout,
           what: 'upload',
-          onProgress: seen.add,
-          run: (progress) {
-            report = progress;
-            return wokeUp.future;
+          run: (progress) async {
+            // Ten quiet stretches, each most of the stall budget: far longer than
+            // the timeout in total, but never silent for it.
+            for (var i = 0; i < 10; i++) {
+              await Future<void>.delayed(_timeout ~/ 2);
+              progress(sent += 1024);
+            }
           },
-        ),
-        throwsA(isA<TimeoutException>()),
-      );
+        );
+        expect(sent, 10240);
+      },
+    );
 
-      expect(seen, isEmpty);
-      report(999); // the abandoned transfer, reporting long after we gave up
-      wokeUp.complete();
-      expect(seen, isEmpty, reason: 'a retry owns this transfer now');
-    });
+    test(
+      'drops progress from a transfer that wakes up after being abandoned',
+      () async {
+        final wokeUp = Completer<void>();
+        final seen = <int>[];
+        late void Function(int) report;
+
+        await expectLater(
+          awaitProgress(
+            stallTimeout: _timeout,
+            what: 'upload',
+            onProgress: seen.add,
+            run: (progress) {
+              report = progress;
+              return wokeUp.future;
+            },
+          ),
+          throwsA(isA<TimeoutException>()),
+        );
+
+        expect(seen, isEmpty);
+        report(999); // the abandoned transfer, reporting long after we gave up
+        wokeUp.complete();
+        expect(seen, isEmpty, reason: 'a retry owns this transfer now');
+      },
+    );
   });
 }

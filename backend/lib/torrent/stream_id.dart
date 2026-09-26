@@ -1,8 +1,17 @@
 import 'torrent_client.dart';
 
 const videoExtensions = {
-  '.mkv', '.mp4', '.avi', '.mov', '.m4v', '.webm', '.ts', '.wmv', '.flv',
-  '.mpg', '.mpeg',
+  '.mkv',
+  '.mp4',
+  '.avi',
+  '.mov',
+  '.m4v',
+  '.webm',
+  '.ts',
+  '.wmv',
+  '.flv',
+  '.mpg',
+  '.mpeg',
 };
 
 bool isVideoFile(String name) {
@@ -22,7 +31,9 @@ List<int> videoFileIndices(List<TorrentFile> files) {
     for (var i = 0; i < files.length; i++)
       if (isVideoFile(files[i].name)) i,
   ];
-  return videos.isNotEmpty ? videos : [for (var i = 0; i < files.length; i++) i];
+  return videos.isNotEmpty
+      ? videos
+      : [for (var i = 0; i < files.length; i++) i];
 }
 
 /// The torrent's *primary* video: the largest one. What a bare-hash id serves —

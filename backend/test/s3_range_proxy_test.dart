@@ -45,8 +45,10 @@ class FakeUpstream {
         }
         final len = end - start + 1;
         res.statusCode = HttpStatus.partialContent;
-        res.headers
-            .set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$total');
+        res.headers.set(
+          HttpHeaders.contentRangeHeader,
+          'bytes $start-$end/$total',
+        );
         // Declare the true length but send fewer bytes when asked to truncate:
         // that is precisely the "connection dropped early without erroring"
         // case that must never be cached as a complete chunk.
@@ -86,56 +88,63 @@ void main() {
   /// keep it (and the wedge) alive.
   Future<Socket> wedgedRequest(int port, String hash) async {
     final sock = await Socket.connect(InternetAddress.loopbackIPv4, port);
-    sock.write('GET /$hash HTTP/1.1\r\n'
-        'Host: 127.0.0.1\r\n'
-        'Range: bytes=0-\r\n'
-        'Connection: close\r\n\r\n');
+    sock.write(
+      'GET /$hash HTTP/1.1\r\n'
+      'Host: 127.0.0.1\r\n'
+      'Range: bytes=0-\r\n'
+      'Connection: close\r\n\r\n',
+    );
     await sock.flush();
     // Never listen() — nothing is drained, so the proxy's writes back up.
     return sock;
   }
 
-  test('a wedged reader does not hold its slot past the write-idle timeout',
-      () async {
-    // maxConcurrent 1 makes the hazard unambiguous: if the wedged response
-    // never yields its slot, the second request can never be served.
-    final proxy = S3RangeProxy(
-      chunkSize: 1 << 20,
-      readAheadChunks: 0,
-      maxCacheBytes: 8 << 20,
-      maxServeBytes: 8 << 20,
-      maxConcurrent: 1,
-      writeIdleTimeout: const Duration(seconds: 2),
-    );
-    await proxy.start();
-    addTearDown(proxy.stop);
-    proxy.register('h', 'http://127.0.0.1:${up.port}/obj');
+  test(
+    'a wedged reader does not hold its slot past the write-idle timeout',
+    () async {
+      // maxConcurrent 1 makes the hazard unambiguous: if the wedged response
+      // never yields its slot, the second request can never be served.
+      final proxy = S3RangeProxy(
+        chunkSize: 1 << 20,
+        readAheadChunks: 0,
+        maxCacheBytes: 8 << 20,
+        maxServeBytes: 8 << 20,
+        maxConcurrent: 1,
+        writeIdleTimeout: const Duration(seconds: 2),
+      );
+      await proxy.start();
+      addTearDown(proxy.stop);
+      proxy.register('h', 'http://127.0.0.1:${up.port}/obj');
 
-    final wedged = await wedgedRequest(proxy.port, 'h');
-    addTearDown(() => wedged.destroy());
+      final wedged = await wedgedRequest(proxy.port, 'h');
+      addTearDown(() => wedged.destroy());
 
-    // Give the proxy time to accept, fetch, and block writing to the wedge.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+      // Give the proxy time to accept, fetch, and block writing to the wedge.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
 
-    // A well-behaved client must still get served once the wedge times out.
-    final client = HttpClient();
-    addTearDown(() => client.close(force: true));
-    final sw = Stopwatch()..start();
-    final req = await client.getUrl(Uri.parse('http://127.0.0.1:${proxy.port}/h'));
-    req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-1023');
-    final resp = await req.close().timeout(const Duration(seconds: 20));
-    var got = 0;
-    await for (final d in resp) {
-      got += d.length;
-    }
-    sw.stop();
+      // A well-behaved client must still get served once the wedge times out.
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+      final sw = Stopwatch()..start();
+      final req = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${proxy.port}/h'),
+      );
+      req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-1023');
+      final resp = await req.close().timeout(const Duration(seconds: 20));
+      var got = 0;
+      await for (final d in resp) {
+        got += d.length;
+      }
+      sw.stop();
 
-    expect(got, 1024);
-    // It had to wait for the wedge to be reclaimed (>= the 2s idle timeout),
-    // but must not have waited anywhere near forever.
-    expect(sw.elapsed, greaterThan(const Duration(seconds: 1)));
-    expect(sw.elapsed, lessThan(const Duration(seconds: 15)));
-  }, timeout: const Timeout(Duration(seconds: 60)));
+      expect(got, 1024);
+      // It had to wait for the wedge to be reclaimed (>= the 2s idle timeout),
+      // but must not have waited anywhere near forever.
+      expect(sw.elapsed, greaterThan(const Duration(seconds: 1)));
+      expect(sw.elapsed, lessThan(const Duration(seconds: 15)));
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 
   test('a short upstream read is never cached as a complete chunk', () async {
     final proxy = S3RangeProxy(
@@ -151,7 +160,9 @@ void main() {
 
     final client = HttpClient();
     addTearDown(() => client.close(force: true));
-    final req = await client.getUrl(Uri.parse('http://127.0.0.1:${proxy.port}/h'));
+    final req = await client.getUrl(
+      Uri.parse('http://127.0.0.1:${proxy.port}/h'),
+    );
     req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-65535');
     final resp = await req.close();
     await resp.drain<void>();
@@ -178,8 +189,9 @@ void main() {
     addTearDown(() => client.close(force: true));
 
     Future<int> read(int chunk) async {
-      final req =
-          await client.getUrl(Uri.parse('http://127.0.0.1:${proxy.port}/h'));
+      final req = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${proxy.port}/h'),
+      );
       final from = chunk << 20;
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=$from-${from + 1023}');
       final resp = await req.close();
@@ -199,37 +211,42 @@ void main() {
     }
   }, timeout: const Timeout(Duration(seconds: 60)));
 
-  test('forget() during an in-flight fetch leaves the budget balanced',
-      () async {
-    final proxy = S3RangeProxy(
-      chunkSize: 1 << 20,
-      readAheadChunks: 3,
-      maxCacheBytes: 8 << 20,
-      maxServeBytes: 4 << 20,
-    );
-    await proxy.start();
-    addTearDown(proxy.stop);
-    proxy.register('h', 'http://127.0.0.1:${up.port}/obj');
+  test(
+    'forget() during an in-flight fetch leaves the budget balanced',
+    () async {
+      final proxy = S3RangeProxy(
+        chunkSize: 1 << 20,
+        readAheadChunks: 3,
+        maxCacheBytes: 8 << 20,
+        maxServeBytes: 4 << 20,
+      );
+      await proxy.start();
+      addTearDown(proxy.stop);
+      proxy.register('h', 'http://127.0.0.1:${up.port}/obj');
 
-    final client = HttpClient();
-    addTearDown(() => client.close(force: true));
-    final req = await client.getUrl(Uri.parse('http://127.0.0.1:${proxy.port}/h'));
-    req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-');
-    final pending = req.close().then((r) => r.drain<void>());
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+      final req = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${proxy.port}/h'),
+      );
+      req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-');
+      final pending = req.close().then((r) => r.drain<void>());
 
-    // Drop the file mid-flight, racing the fetches and their read-ahead.
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    proxy.forget('h');
-    try {
-      await pending.timeout(const Duration(seconds: 15));
-    } catch (_) {
-      // The response may legitimately fail once the entry is gone.
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 800));
+      // Drop the file mid-flight, racing the fetches and their read-ahead.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      proxy.forget('h');
+      try {
+        await pending.timeout(const Duration(seconds: 15));
+      } catch (_) {
+        // The response may legitimately fail once the entry is gone.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 800));
 
-    expect(proxy.cachedBytes, 0);
-    expect(proxy.reservedBytes, 0);
-  }, timeout: const Timeout(Duration(seconds: 60)));
+      expect(proxy.cachedBytes, 0);
+      expect(proxy.reservedBytes, 0);
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 
   test('the byte budget is never exceeded across many cold reads', () async {
     const cap = 4 << 20;
@@ -249,8 +266,9 @@ void main() {
     var maxSeen = 0;
     for (var i = 0; i < 24; i++) {
       final off = i * (2 << 20);
-      final req =
-          await client.getUrl(Uri.parse('http://127.0.0.1:${proxy.port}/h'));
+      final req = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${proxy.port}/h'),
+      );
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=$off-');
       final resp = await req.close();
       await resp.drain<void>();

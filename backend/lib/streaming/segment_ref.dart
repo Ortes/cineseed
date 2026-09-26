@@ -25,11 +25,7 @@ import 'mp4_boxes.dart';
 /// *or* cancellation) or [dispose] must be called. A leaked handle is not
 /// harmless here: it keeps the file "in use".
 class SegmentRef {
-  SegmentRef({
-    required this.file,
-    required this.head,
-    required this.total,
-  });
+  SegmentRef({required this.file, required this.head, required this.total});
 
   final RandomAccessFile file;
 

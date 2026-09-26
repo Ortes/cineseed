@@ -52,9 +52,9 @@ class CineseedApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-        title: 'Cineseed',
-        debugShowCheckedModeBanner: false,
-        theme: buildCineseedTheme(),
-        routerConfig: router,
-      );
+    title: 'Cineseed',
+    debugShowCheckedModeBanner: false,
+    theme: buildCineseedTheme(),
+    routerConfig: router,
+  );
 }

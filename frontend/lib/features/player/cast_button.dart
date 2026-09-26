@@ -58,8 +58,9 @@ class CastButton extends HookConsumerWidget {
     }, const []);
 
     void onTap() {
-      final url =
-          ref.read(apiClientProvider).hlsMasterUrl(hash, fileIndex: fileIndex);
+      final url = ref
+          .read(apiClientProvider)
+          .hlsMasterUrl(hash, fileIndex: fileIndex);
       if (connected.value) {
         try {
           _jsCastHls(url, title);

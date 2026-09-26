@@ -25,16 +25,18 @@ class HlsPlaylists {
     // Honour an explicit, valid track request; else fall back to the default.
     final selectedOrder =
         (audioOrder != null && audio.any((a) => a.order == audioOrder))
-            ? audioOrder
-            : fallbackOrder;
+        ? audioOrder
+        : fallbackOrder;
 
     final textSubs = s.probe.subtitles.where((x) => x.isText).toList();
     for (final sub in textSubs) {
-      b.writeln('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="$subGroup",'
-          'NAME="${_esc(sub.label)}",'
-          '${sub.language != null ? 'LANGUAGE="${sub.language}",' : ''}'
-          'DEFAULT=NO,AUTOSELECT=NO,FORCED=NO,'
-          'URI="s/${sub.order}/index.m3u8"');
+      b.writeln(
+        '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="$subGroup",'
+        'NAME="${_esc(sub.label)}",'
+        '${sub.language != null ? 'LANGUAGE="${sub.language}",' : ''}'
+        'DEFAULT=NO,AUTOSELECT=NO,FORCED=NO,'
+        'URI="s/${sub.order}/index.m3u8"',
+      );
     }
 
     final codecs = <String>[];
@@ -44,7 +46,9 @@ class HlsPlaylists {
     final streamInf = StringBuffer('#EXT-X-STREAM-INF:BANDWIDTH=6000000');
     if (codecs.isNotEmpty) streamInf.write(',CODECS="${codecs.join(',')}"');
     if (s.probe.video != null) {
-      streamInf.write(',RESOLUTION=${s.probe.video!.width}x${s.probe.video!.height}');
+      streamInf.write(
+        ',RESOLUTION=${s.probe.video!.width}x${s.probe.video!.height}',
+      );
     }
     if (textSubs.isNotEmpty) streamInf.write(',SUBTITLES="$subGroup"');
     b
@@ -93,7 +97,9 @@ class HlsPlaylists {
       ..writeln('#EXT-X-MAP:URI="$initName"');
     for (var i = 0; i < count; i++) {
       b
-        ..writeln('#EXTINF:${(boundaries[i + 1] - boundaries[i]).toStringAsFixed(6)},')
+        ..writeln(
+          '#EXTINF:${(boundaries[i + 1] - boundaries[i]).toStringAsFixed(6)},',
+        )
         ..writeln('$i.m4s');
     }
     b.writeln('#EXT-X-ENDLIST');

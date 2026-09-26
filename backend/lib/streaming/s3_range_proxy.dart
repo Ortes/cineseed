@@ -99,15 +99,15 @@ class S3RangeProxy {
     this.upstreamTimeout = const Duration(seconds: 30),
     this.debug = false,
   }) : _client = (HttpClient()
-          ..connectionTimeout = const Duration(seconds: 10)
-          // Do NOT tie this to the buffer pool. Memory is already bounded by the
-          // pool (a fetch waits for a slot before it reads), so a smaller
-          // connection pool buys nothing and starves reads instead: at 4, two
-          // concurrent producers plus read-ahead exhausted it, so fetches queued
-          // past `connectionTimeout` and surfaced as 10 s stalls and 404s when
-          // seeking — the segment could not be produced before hls.js gave up.
-          ..maxConnectionsPerHost = 8
-          ..idleTimeout = const Duration(seconds: 30)) {
+         ..connectionTimeout = const Duration(seconds: 10)
+         // Do NOT tie this to the buffer pool. Memory is already bounded by the
+         // pool (a fetch waits for a slot before it reads), so a smaller
+         // connection pool buys nothing and starves reads instead: at 4, two
+         // concurrent producers plus read-ahead exhausted it, so fetches queued
+         // past `connectionTimeout` and surfaced as 10 s stalls and 404s when
+         // seeking — the segment could not be produced before hls.js gave up.
+         ..maxConnectionsPerHost = 8
+         ..idleTimeout = const Duration(seconds: 30)) {
     final slots = maxCacheBytes ~/ chunkSize;
     _pool = _BufferPool(chunkSize, slots < 2 ? 2 : slots);
   }
@@ -175,7 +175,9 @@ class S3RangeProxy {
   Future<void> _handle(HttpRequest req) async {
     final res = req.response;
     try {
-      final hash = req.uri.pathSegments.isNotEmpty ? req.uri.pathSegments.first : '';
+      final hash = req.uri.pathSegments.isNotEmpty
+          ? req.uri.pathSegments.first
+          : '';
       final e = _entries[hash];
       if (e == null) {
         res.statusCode = HttpStatus.notFound;
@@ -211,7 +213,10 @@ class S3RangeProxy {
       if (end - start + 1 > maxServeBytes) end = start + maxServeBytes - 1;
       if (rangeHeader != null || start > 0 || end < total - 1) {
         res.statusCode = HttpStatus.partialContent; // 206
-        res.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$total');
+        res.headers.set(
+          HttpHeaders.contentRangeHeader,
+          'bytes $start-$end/$total',
+        );
       } else {
         res.statusCode = HttpStatus.ok;
       }
@@ -232,10 +237,12 @@ class S3RangeProxy {
         _releaseSlot();
       }
       if (debug) {
-        stderr.writeln('[proxy] ${req.headers.value(HttpHeaders.rangeHeader)} '
-            '-> $start-$end (${((end - start + 1) / 1024).round()}KiB) '
-            'in ${sw!.elapsedMilliseconds}ms cache=${(cachedBytes / 1048576).round()}MiB '
-            'pooled=${(pooledBytes / 1048576).round()}MiB active=$_active');
+        stderr.writeln(
+          '[proxy] ${req.headers.value(HttpHeaders.rangeHeader)} '
+          '-> $start-$end (${((end - start + 1) / 1024).round()}KiB) '
+          'in ${sw!.elapsedMilliseconds}ms cache=${(cachedBytes / 1048576).round()}MiB '
+          'pooled=${(pooledBytes / 1048576).round()}MiB active=$_active',
+        );
       }
     } catch (e2) {
       if (debug) stderr.writeln('[proxy] ERR $e2');
@@ -247,8 +254,14 @@ class S3RangeProxy {
     }
   }
 
-  Future<void> _stream(String hash, _Entry e, int total, int start, int end,
-      HttpResponse res) async {
+  Future<void> _stream(
+    String hash,
+    _Entry e,
+    int total,
+    int start,
+    int end,
+    HttpResponse res,
+  ) async {
     final firstChunk = start ~/ chunkSize;
     final lastChunk = end ~/ chunkSize;
     // Read ahead a little past the (capped) window so the client's next
@@ -280,8 +293,12 @@ class S3RangeProxy {
       try {
         final bytes = c.view;
         final chunkStart = idx * chunkSize;
-        final lo = (idx == firstChunk ? start - chunkStart : 0).clamp(0, bytes.length);
-        final hi = (idx == lastChunk ? end - chunkStart + 1 : bytes.length).clamp(lo, bytes.length);
+        final lo = (idx == firstChunk ? start - chunkStart : 0).clamp(
+          0,
+          bytes.length,
+        );
+        final hi = (idx == lastChunk ? end - chunkStart + 1 : bytes.length)
+            .clamp(lo, bytes.length);
         if (hi > lo) {
           res.add(Uint8List.sublistView(bytes, lo, hi));
           final flushed = res.flush();
@@ -356,7 +373,12 @@ class S3RangeProxy {
   /// When [wait] is false the caller gets null rather than queueing for a pool
   /// buffer — used by read-ahead, which is speculative by definition and must
   /// never block a real read.
-  Future<_Chunk>? _pinChunk(String hash, _Entry e, int idx, {bool wait = true}) {
+  Future<_Chunk>? _pinChunk(
+    String hash,
+    _Entry e,
+    int idx, {
+    bool wait = true,
+  }) {
     if (e.forgotten) {
       return Future.error(StateError('$hash forgotten'));
     }
@@ -365,10 +387,13 @@ class S3RangeProxy {
     if (existing != null) {
       _lru[key] = existing; // most-recently-used
       existing.pins++;
-      return existing.future.then((_) => existing, onError: (Object err) {
-        _unpin(existing);
-        throw err;
-      });
+      return existing.future.then(
+        (_) => existing,
+        onError: (Object err) {
+          _unpin(existing);
+          throw err;
+        },
+      );
     }
     final c = _Chunk()..pins = 1;
     // Insert *then* evict, before requesting a buffer. The cache legitimately
@@ -382,27 +407,30 @@ class S3RangeProxy {
       c.pins = 0;
       return null;
     }
-    c.future = _run(c, e, idx).then((_) {
-      // forget() or eviction may have dropped this entry mid-flight; only the
-      // current occupant of the key belongs in the cache.
-      if (_lru[key] != c) {
-        _maybeRecycle(c);
-      } else {
-        _evict();
-      }
-      return c;
-    }, onError: (Object err) {
-      if (_lru[key] == c) _lru.remove(key); // never cache failures
-      c.bytes = null;
-      // Out of the cache, so it must be marked dropped: _maybeRecycle only ever
-      // returns a *dropped* chunk's buffer. Without this every failed fetch lost
-      // one pool buffer for good, and a single loss wedged the whole proxy — the
-      // LRU still believed it had room, so nothing was evicted and the next new
-      // chunk waited in _pool.take() forever.
-      _drop(c);
-      _unpin(c);
-      throw err;
-    });
+    c.future = _run(c, e, idx).then(
+      (_) {
+        // forget() or eviction may have dropped this entry mid-flight; only the
+        // current occupant of the key belongs in the cache.
+        if (_lru[key] != c) {
+          _maybeRecycle(c);
+        } else {
+          _evict();
+        }
+        return c;
+      },
+      onError: (Object err) {
+        if (_lru[key] == c) _lru.remove(key); // never cache failures
+        c.bytes = null;
+        // Out of the cache, so it must be marked dropped: _maybeRecycle only ever
+        // returns a *dropped* chunk's buffer. Without this every failed fetch lost
+        // one pool buffer for good, and a single loss wedged the whole proxy — the
+        // LRU still believed it had room, so nothing was evicted and the next new
+        // chunk waited in _pool.take() forever.
+        _drop(c);
+        _unpin(c);
+        throw err;
+      },
+    );
     return c.future;
   }
 
@@ -477,7 +505,7 @@ class S3RangeProxy {
   /// tail still holds a previous chunk's bytes, which would otherwise be served
   /// as if they belonged here.
   Future<int> _fetchUpstream(_Entry e, int idx, Uint8List dest) async {
-    for (var attempt = 0;; attempt++) {
+    for (var attempt = 0; ; attempt++) {
       try {
         return await _fetchOnce(e, idx, dest);
       } catch (err) {
@@ -494,14 +522,20 @@ class S3RangeProxy {
     final sw = debug ? (Stopwatch()..start()) : null;
     if (debug) stderr.writeln('[fetch] $idx getUrl...');
     final req = await _client.getUrl(Uri.parse(e.upstreamUrl));
-    if (debug) stderr.writeln('[fetch] $idx got conn @${sw!.elapsedMilliseconds}ms');
+    if (debug)
+      stderr.writeln('[fetch] $idx got conn @${sw!.elapsedMilliseconds}ms');
     req.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-$reqEnd');
-    final resp = await req.close().timeout(upstreamTimeout, onTimeout: () {
-      req.abort();
-      throw TimeoutException('upstream headers', upstreamTimeout);
-    });
-    if (debug) stderr.writeln('[fetch] $idx headers @${sw!.elapsedMilliseconds}ms');
-    if (resp.statusCode != HttpStatus.partialContent && resp.statusCode != HttpStatus.ok) {
+    final resp = await req.close().timeout(
+      upstreamTimeout,
+      onTimeout: () {
+        req.abort();
+        throw TimeoutException('upstream headers', upstreamTimeout);
+      },
+    );
+    if (debug)
+      stderr.writeln('[fetch] $idx headers @${sw!.elapsedMilliseconds}ms');
+    if (resp.statusCode != HttpStatus.partialContent &&
+        resp.statusCode != HttpStatus.ok) {
       await resp.drain<void>();
       throw HttpException('upstream HTTP ${resp.statusCode}');
     }
@@ -517,8 +551,12 @@ class S3RangeProxy {
     // chunk's expected length is derived here rather than before the request.
     final want = _expectedLen(e, idx);
     final n = await _fillExact(
-        resp.timeout(upstreamTimeout), dest, want > 0 ? want : chunkSize);
-    if (debug) stderr.writeln('[fetch] $idx done ${n}B @${sw!.elapsedMilliseconds}ms');
+      resp.timeout(upstreamTimeout),
+      dest,
+      want > 0 ? want : chunkSize,
+    );
+    if (debug)
+      stderr.writeln('[fetch] $idx done ${n}B @${sw!.elapsedMilliseconds}ms');
     // Only meaningful for chunk 0: a 200 means upstream ignored our Range, so
     // these bytes start at file offset 0. Attributing their length to `total`
     // for idx > 0 would record a size for data we did not actually fetch.
@@ -565,7 +603,10 @@ class S3RangeProxy {
   /// previously occupied [dest]. There is no legitimate short read — the length
   /// is derived from the object's own size.
   static Future<int> _fillExact(
-      Stream<List<int>> resp, Uint8List dest, int expectedLen) async {
+    Stream<List<int>> resp,
+    Uint8List dest,
+    int expectedLen,
+  ) async {
     if (expectedLen > dest.length) {
       throw HttpException('chunk $expectedLen exceeds buffer ${dest.length}');
     }
@@ -614,6 +655,7 @@ class S3RangeProxy {
 class _Entry {
   String upstreamUrl = '';
   int? total;
+
   /// Set by [S3RangeProxy.forget]; an in-flight response holding this object
   /// must stop repopulating the cache for a file nothing will forget again.
   bool forgotten = false;

@@ -37,11 +37,17 @@ Future<void> main(List<String> args) async {
     stderr.writeln('probe/cues failed');
     exit(1);
   }
-  final duration = cues.durationSeconds ?? probe.duration ?? cues.keyframeTimes.last;
-  final producerBoundaries =
-      HlsSession.computeBoundaries(cues.keyframeTimes, duration, 4);
-  final (boundaries, groupStart) =
-      HlsSession.groupBoundaries(producerBoundaries, 4);
+  final duration =
+      cues.durationSeconds ?? probe.duration ?? cues.keyframeTimes.last;
+  final producerBoundaries = HlsSession.computeBoundaries(
+    cues.keyframeTimes,
+    duration,
+    4,
+  );
+  final (boundaries, groupStart) = HlsSession.groupBoundaries(
+    producerBoundaries,
+    4,
+  );
   session = HlsSession(
     id: 'probe',
     url: local,
@@ -65,8 +71,10 @@ Future<void> main(List<String> args) async {
   await gen.videoInit(session); // pre-warm codec string for the master
 
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
-  stdout.writeln('HLS test server: http://localhost:$port/  '
-      '(segments=${session.segmentCount}, audio=${probe.audio.length})');
+  stdout.writeln(
+    'HLS test server: http://localhost:$port/  '
+    '(segments=${session.segmentCount}, audio=${probe.audio.length})',
+  );
   await for (final req in server) {
     _handle(req);
   }
@@ -87,12 +95,17 @@ Future<void> _handle(HttpRequest req) async {
       await _m3u8(res, HlsPlaylists.master(session));
     } else if (RegExp(r'^/hls/m/(\d+)/index\.m3u8$').hasMatch(p)) {
       await _m3u8(res, HlsPlaylists.muxedMedia(session));
-    } else if (RegExp(r'^/hls/m/(\d+)/init\.mp4$').firstMatch(p) case final m?) {
+    } else if (RegExp(r'^/hls/m/(\d+)/init\.mp4$').firstMatch(p)
+        case final m?) {
       final b = await gen.muxedInit(session, int.parse(m.group(1)!));
       b == null ? await _404(res) : await _mp4(res, b);
-    } else if (RegExp(r'^/hls/m/(\d+)/(\d+)\.m4s$').firstMatch(p) case final m?) {
+    } else if (RegExp(r'^/hls/m/(\d+)/(\d+)\.m4s$').firstMatch(p)
+        case final m?) {
       final mux = await gen.muxedSegment(
-          session, int.parse(m.group(1)!), int.parse(m.group(2)!));
+        session,
+        int.parse(m.group(1)!),
+        int.parse(m.group(2)!),
+      );
       mux == null ? await _404(res) : await _muxed(res, mux);
     } else {
       await _404(res);

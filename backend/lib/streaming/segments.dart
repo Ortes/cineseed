@@ -60,21 +60,24 @@ class SegmentGenerator {
 
   Future<Uint8List> _buildVideoInit(HlsSession s) async {
     final isHevc = (s.probe.video?.codec ?? '').toLowerCase() == 'hevc';
-    final (init, _) = await pool.run(() => _runMuxer(
-          url: s.url,
-          start: 0,
-          durationLimit: 0.2,
-          hlsTime: 9999,
-          mapArgs: [
-            '-map', '0:v:0',
-            '-c:v', 'copy',
-            if (isHevc) ...['-tag:v', 'hvc1'],
-          ],
-        ));
+    final (init, _) = await pool.run(
+      () => _runMuxer(
+        url: s.url,
+        start: 0,
+        durationLimit: 0.2,
+        hlsTime: 9999,
+        mapArgs: [
+          '-map',
+          '0:v:0',
+          '-c:v',
+          'copy',
+          if (isHevc) ...['-tag:v', 'hvc1'],
+        ],
+      ),
+    );
     s.videoInit = init;
     s.videoTimescale = Mp4Boxes.readTimescale(init);
-    s.videoCodecString =
-        isHevc ? Mp4Boxes.hevcCodecString(init) : _avcCodec(s);
+    s.videoCodecString = isHevc ? Mp4Boxes.hevcCodecString(init) : _avcCodec(s);
     return init;
   }
 
@@ -145,8 +148,10 @@ class SegmentGenerator {
     final isHevc = (s.probe.video?.codec ?? '').toLowerCase() == 'hevc';
     final a = s.probe.audio[track];
     return [
-      '-map', '0:v:0',
-      '-c:v', 'copy',
+      '-map',
+      '0:v:0',
+      '-c:v',
+      'copy',
       if (isHevc) ...['-tag:v', 'hvc1'],
       ..._audioMapArgs(a.order, a),
     ];
@@ -205,7 +210,11 @@ class SegmentGenerator {
   /// Returns the window's WebVTT and whether the wall-clock cap killed ffmpeg
   /// (see [vttSegment]: a killed run is not cached).
   Future<(String, bool)> _extractVttWindow(
-      HlsSession s, int subOrder, double start, double dur) async {
+    HlsSession s,
+    int subOrder,
+    double start,
+    double dur,
+  ) async {
     final proc = await Process.start(ffmpegBin, [
       '-nostdin', '-loglevel', debug ? 'verbose' : 'error',
       '-rw_timeout', '30000000',
@@ -241,8 +250,11 @@ class SegmentGenerator {
     var killed = false;
     final killer = Timer(vttTimeout, () {
       killed = true;
-      Log.d('hls', 's:$subOrder @${start.toStringAsFixed(1)}s vtt extract '
-          'hit ${vttTimeout.inSeconds}s cap — killing');
+      Log.d(
+        'hls',
+        's:$subOrder @${start.toStringAsFixed(1)}s vtt extract '
+            'hit ${vttTimeout.inSeconds}s cap — killing',
+      );
       proc.kill(ProcessSignal.sigkill);
     });
     await proc.exitCode;
@@ -274,11 +286,15 @@ class SegmentGenerator {
   // --- helpers ---
 
   List<String> _audioMapArgs(int order, audio) => [
-        '-map', '0:a:$order',
-        '-c:a', 'aac',
-        '-b:a', audioBitrate,
-        '-ac', '${audio.channels}',
-      ];
+    '-map',
+    '0:a:$order',
+    '-c:a',
+    'aac',
+    '-b:a',
+    audioBitrate,
+    '-ac',
+    '${audio.channels}',
+  ];
 
   /// Runs ffmpeg's HLS fMP4 muxer in a temp dir; returns (initBytes, seg0Bytes).
   /// Used only to build the init segments (video + audio); media segments come
@@ -316,15 +332,17 @@ class SegmentGenerator {
       Log.d('seg', 'init/mux ffmpeg start ss=$start dur=$durationLimit');
       final res = await Process.run(ffmpegBin, args);
       if (dbg) {
-        Log.d('seg', 'init/mux ffmpeg exit=${res.exitCode} ss=$start '
-            'in ${sw!.elapsedMilliseconds}ms');
+        Log.d(
+          'seg',
+          'init/mux ffmpeg exit=${res.exitCode} ss=$start '
+              'in ${sw!.elapsedMilliseconds}ms',
+        );
         if (res.exitCode == 0 && '${res.stderr}'.trim().isNotEmpty) {
           stderr.write('[ffmpeg:seg] ${res.stderr}');
         }
       }
       if (res.exitCode != 0) {
-        throw ProcessException(
-            ffmpegBin, args, '${res.stderr}', res.exitCode);
+        throw ProcessException(ffmpegBin, args, '${res.stderr}', res.exitCode);
       }
       final init = File('${dir.path}/init.mp4');
       final seg0 = File('${dir.path}/seg0.m4s');

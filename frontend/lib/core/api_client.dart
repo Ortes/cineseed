@@ -73,10 +73,14 @@ class ApiClient {
 
   /// The torrent's video files with per-file progress and S3 state. More than
   /// one means the user picks which to watch before anything plays.
-  Future<TorrentFiles> torrentFiles(String hash,
-      {CancelToken? cancelToken}) async {
-    final res = await _dio.get('/api/torrents/$hash/files',
-        cancelToken: cancelToken);
+  Future<TorrentFiles> torrentFiles(
+    String hash, {
+    CancelToken? cancelToken,
+  }) async {
+    final res = await _dio.get(
+      '/api/torrents/$hash/files',
+      cancelToken: cancelToken,
+    );
     return TorrentFiles.fromJson((res.data as Map).cast<String, dynamic>());
   }
 
@@ -88,12 +92,20 @@ class ApiClient {
   /// `/api/stream` status: `mode` is `s3` (finished, on S3 → playable via HLS),
   /// `local` (still downloading → only the VLC link works), and `url` is the
   /// direct S3/local link (used for the copy-to-VLC button).
-  Future<({String url, String mode})> streamStatus(String hash,
-      {int? fileIndex, CancelToken? cancelToken}) async {
-    final res = await _dio.get('/api/stream/${streamId(hash, fileIndex)}',
-        cancelToken: cancelToken);
+  Future<({String url, String mode})> streamStatus(
+    String hash, {
+    int? fileIndex,
+    CancelToken? cancelToken,
+  }) async {
+    final res = await _dio.get(
+      '/api/stream/${streamId(hash, fileIndex)}',
+      cancelToken: cancelToken,
+    );
     final m = (res.data as Map).cast<String, dynamic>();
-    return (url: (m['url'] as String?) ?? '', mode: (m['mode'] as String?) ?? '');
+    return (
+      url: (m['url'] as String?) ?? '',
+      mode: (m['mode'] as String?) ?? '',
+    );
   }
 
   /// Absolute URL of the live HLS master playlist for the in-app player.
@@ -104,11 +116,15 @@ class ApiClient {
       '${audioOrder != null ? '?a=$audioOrder' : ''}';
 
   /// Audio tracks for one file's HLS stream (for the player's language menu).
-  Future<List<AudioTrackInfo>> audioTracks(String hash,
-      {int? fileIndex, CancelToken? cancelToken}) async {
+  Future<List<AudioTrackInfo>> audioTracks(
+    String hash, {
+    int? fileIndex,
+    CancelToken? cancelToken,
+  }) async {
     final res = await _dio.get(
-        '/api/hls/${streamId(hash, fileIndex)}/audio-tracks',
-        cancelToken: cancelToken);
+      '/api/hls/${streamId(hash, fileIndex)}/audio-tracks',
+      cancelToken: cancelToken,
+    );
     return (res.data as List)
         .map((e) => AudioTrackInfo.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
@@ -168,8 +184,10 @@ class _DebugLogInterceptor extends Interceptor {
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
     if (!_skip(response.requestOptions.path)) {
-      DebugLog.log('NET',
-          '← ${response.statusCode} ${response.requestOptions.uri}');
+      DebugLog.log(
+        'NET',
+        '← ${response.statusCode} ${response.requestOptions.uri}',
+      );
     }
     handler.next(response);
   }

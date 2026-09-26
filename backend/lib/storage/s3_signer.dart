@@ -26,12 +26,12 @@ class S3Signer {
     this.defaultTtl = 21600,
     this.uploadStallTimeout = const Duration(seconds: 60),
   }) : _minio = Minio(
-          endPoint: endpoint,
-          accessKey: accessKey,
-          secretKey: secretKey,
-          region: region,
-          useSSL: true,
-        );
+         endPoint: endpoint,
+         accessKey: accessKey,
+         secretKey: secretKey,
+         region: region,
+         useSSL: true,
+       );
 
   Future<String> presign(String key, {int? ttl}) =>
       _minio.presignedGetObject(bucket, key, expires: ttl ?? defaultTtl);
@@ -51,15 +51,17 @@ class S3Signer {
   /// The stalled request itself can't be cancelled — `send()` creates and owns
   /// the underlying client — so it leaks its socket and its 64 MiB chunk until
   /// the process exits. That's the cost of failing instead of hanging forever.
-  Future<void> putFile(String key, String filePath,
-          {void Function(int)? onProgress}) =>
-      awaitProgress(
-        stallTimeout: uploadStallTimeout,
-        what: 'S3 upload of $key',
-        onProgress: onProgress,
-        run: (progress) =>
-            _minio.fPutObject(bucket, key, filePath, onProgress: progress),
-      );
+  Future<void> putFile(
+    String key,
+    String filePath, {
+    void Function(int)? onProgress,
+  }) => awaitProgress(
+    stallTimeout: uploadStallTimeout,
+    what: 'S3 upload of $key',
+    onProgress: onProgress,
+    run: (progress) =>
+        _minio.fPutObject(bucket, key, filePath, onProgress: progress),
+  );
 
   /// Like [presign] but the URL forces a download instead of inline playback.
   /// S3 echoes the `response-content-disposition` param back as the

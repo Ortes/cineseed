@@ -32,7 +32,8 @@ class UserInitiatedPlayback extends Notifier<bool> {
 /// Search results, driven by [SearchController.search].
 final searchProvider =
     AsyncNotifierProvider<SearchController, List<TorrentResult>>(
-        SearchController.new);
+      SearchController.new,
+    );
 
 class SearchController extends AsyncNotifier<List<TorrentResult>> {
   @override
@@ -42,7 +43,8 @@ class SearchController extends AsyncNotifier<List<TorrentResult>> {
     if (query.isEmpty) return;
     state = const AsyncLoading();
     state = await AsyncValue.guard(
-        () => ref.read(apiClientProvider).search(query));
+      () => ref.read(apiClientProvider).search(query),
+    );
   }
 }
 
@@ -61,7 +63,8 @@ final libraryProvider = StreamProvider<List<TorrentState>>((ref) async* {
 
 /// Presigned stream URL for a given torrent hash.
 final streamUrlProvider = FutureProvider.family<String, String>(
-    (ref, hash) => ref.watch(apiClientProvider).streamUrl(hash));
+  (ref, hash) => ref.watch(apiClientProvider).streamUrl(hash),
+);
 
 /// A torrent's video files, polled like the library so per-file download and
 /// S3-upload progress animate live while the picker is open. Keyed by hash.
@@ -71,8 +74,10 @@ final streamUrlProvider = FutureProvider.family<String, String>(
 /// S3 latches only ever go from false to true. Without this the loop would keep
 /// billing a Transmission RPC every 2 s for the whole length of a film — this
 /// provider outlives the picker, since the player is nested under it.
-final torrentFilesProvider =
-    StreamProvider.family<TorrentFiles, String>((ref, hash) async* {
+final torrentFilesProvider = StreamProvider.family<TorrentFiles, String>((
+  ref,
+  hash,
+) async* {
   final api = ref.watch(apiClientProvider);
   while (true) {
     try {
@@ -92,4 +97,5 @@ final torrentFilesProvider =
 /// id is unknown, or the release isn't a movie/TV title.
 final tmdbTitleProvider =
     FutureProvider.family<TmdbMovie?, ({MediaType type, int id})>(
-        (ref, key) => ref.watch(apiClientProvider).tmdbTitle(key.type, key.id));
+      (ref, key) => ref.watch(apiClientProvider).tmdbTitle(key.type, key.id),
+    );

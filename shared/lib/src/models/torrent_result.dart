@@ -30,29 +30,29 @@ class TorrentResult {
   });
 
   factory TorrentResult.fromJson(Map<String, dynamic> json) => TorrentResult(
-        title: json['title'] as String? ?? '',
-        infoHash: json['infoHash'] as String? ?? '',
-        tmdbId: (json['tmdbId'] as num?)?.toInt(),
-        mediaType: MediaType.fromJson(json['mediaType'] as String?),
-        seeders: (json['seeders'] as num?)?.toInt() ?? 0,
-        leechers: (json['leechers'] as num?)?.toInt() ?? 0,
-        grabs: (json['grabs'] as num?)?.toInt() ?? 0,
-        size: (json['size'] as num?)?.toInt() ?? 0,
-        pubDate: switch (json['pubDate']) {
-          final String s when s.isNotEmpty => DateTime.tryParse(s),
-          _ => null,
-        },
-      );
+    title: json['title'] as String? ?? '',
+    infoHash: json['infoHash'] as String? ?? '',
+    tmdbId: (json['tmdbId'] as num?)?.toInt(),
+    mediaType: MediaType.fromJson(json['mediaType'] as String?),
+    seeders: (json['seeders'] as num?)?.toInt() ?? 0,
+    leechers: (json['leechers'] as num?)?.toInt() ?? 0,
+    grabs: (json['grabs'] as num?)?.toInt() ?? 0,
+    size: (json['size'] as num?)?.toInt() ?? 0,
+    pubDate: switch (json['pubDate']) {
+      final String s when s.isNotEmpty => DateTime.tryParse(s),
+      _ => null,
+    },
+  );
 
   Map<String, dynamic> toJson() => {
-        'title': title,
-        'infoHash': infoHash,
-        'tmdbId': tmdbId,
-        'mediaType': mediaType.toJson(),
-        'seeders': seeders,
-        'leechers': leechers,
-        'grabs': grabs,
-        'size': size,
-        'pubDate': pubDate?.toIso8601String(),
-      };
+    'title': title,
+    'infoHash': infoHash,
+    'tmdbId': tmdbId,
+    'mediaType': mediaType.toJson(),
+    'seeders': seeders,
+    'leechers': leechers,
+    'grabs': grabs,
+    'size': size,
+    'pubDate': pubDate?.toIso8601String(),
+  };
 }

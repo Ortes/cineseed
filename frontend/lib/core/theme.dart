@@ -79,10 +79,7 @@ ThemeData buildCineseedTheme() {
       unselectedLabelColor: CineseedColors.creamMuted,
       indicatorColor: CineseedColors.cream,
       indicatorSize: TabBarIndicatorSize.label,
-      labelStyle: TextStyle(
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.3,
-      ),
+      labelStyle: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.3),
       unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500),
       dividerColor: Colors.transparent,
       overlayColor: WidgetStatePropertyAll(Color(0x11F5E8D0)),
@@ -120,8 +117,7 @@ ThemeData buildCineseedTheme() {
       filled: true,
       fillColor: CineseedColors.surface,
       hintStyle: const TextStyle(color: CineseedColors.creamMuted),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: CineseedColors.outline),
@@ -132,8 +128,10 @@ ThemeData buildCineseedTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide:
-            const BorderSide(color: CineseedColors.primaryBright, width: 1.5),
+        borderSide: const BorderSide(
+          color: CineseedColors.primaryBright,
+          width: 1.5,
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -141,9 +139,7 @@ ThemeData buildCineseedTheme() {
         backgroundColor: CineseedColors.primary,
         foregroundColor: CineseedColors.cream,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         textStyle: const TextStyle(
           fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
@@ -156,9 +152,7 @@ ThemeData buildCineseedTheme() {
         foregroundColor: CineseedColors.cream,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(

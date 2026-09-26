@@ -29,8 +29,10 @@ class QuickUpstream {
         }
         final len = end - start + 1;
         res.statusCode = HttpStatus.partialContent;
-        res.headers
-            .set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$total');
+        res.headers.set(
+          HttpHeaders.contentRangeHeader,
+          'bytes $start-$end/$total',
+        );
         res.headers.contentLength = len;
         res.add(Uint8List(len));
         await res.close();
@@ -65,8 +67,10 @@ void main() {
     final wedged = <Socket>[];
     for (var i = 0; i < 6; i++) {
       final s = await Socket.connect(InternetAddress.loopbackIPv4, port);
-      s.write('GET /h HTTP/1.1\r\nHost: 127.0.0.1\r\n'
-          'Range: bytes=${i * (8 << 20)}-\r\nConnection: close\r\n\r\n');
+      s.write(
+        'GET /h HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+        'Range: bytes=${i * (8 << 20)}-\r\nConnection: close\r\n\r\n',
+      );
       await s.flush();
       wedged.add(s); // never listen() → nothing drained
     }
@@ -81,14 +85,19 @@ void main() {
     await resp.drain<void>();
     sw.stop();
 
-    stderr.writeln('>>> warm 1 KiB read behind 6 abandoned readers: '
-        '${sw.elapsedMilliseconds} ms, pooled=${proxy.pooledBytes >> 20} MiB');
+    stderr.writeln(
+      '>>> warm 1 KiB read behind 6 abandoned readers: '
+      '${sw.elapsedMilliseconds} ms, pooled=${proxy.pooledBytes >> 20} MiB',
+    );
 
     // Forfeited buffers are written off, so the pool still offers its full
     // complement and a later read cannot be short of one.
     expect(proxy.pooledBytes, lessThanOrEqualTo(64 << 20));
     final req2 = await client.getUrl(Uri.parse('http://127.0.0.1:$port/h'));
-    req2.headers.set(HttpHeaders.rangeHeader, 'bytes=${40 << 20}-${(40 << 20) + 1023}');
+    req2.headers.set(
+      HttpHeaders.rangeHeader,
+      'bytes=${40 << 20}-${(40 << 20) + 1023}',
+    );
     final resp2 = await req2.close().timeout(const Duration(seconds: 15));
     var got = 0;
     await for (final d in resp2) {
@@ -105,7 +114,10 @@ void main() {
 
     // The segment timeout is 18 s: a stall anywhere near it means the producer
     // never delivers, so the fragment 404s and playback dies.
-    expect(sw.elapsed, lessThan(const Duration(seconds: 5)),
-        reason: 'a warm read queued behind abandoned readers');
+    expect(
+      sw.elapsed,
+      lessThan(const Duration(seconds: 5)),
+      reason: 'a warm read queued behind abandoned readers',
+    );
   }, timeout: const Timeout(Duration(minutes: 2)));
 }

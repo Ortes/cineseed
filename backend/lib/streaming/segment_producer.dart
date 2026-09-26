@@ -12,15 +12,18 @@ import 'segment_ref.dart';
 class ProducerConfig {
   final String ffmpegBin;
   final String tempRoot; // parent dir for per-session subdirs
-  final double targetSeconds; // nominal segment length (kept for config compat);
+  final double
+  targetSeconds; // nominal segment length (kept for config compat);
   // the producer cuts at every keyframe regardless — see _launch's -hls_time
   final int throttleAheadSegments; // pause ffmpeg when this far ahead of client
   final int retainBehindSegments; // keep this many consumed segments behind the
   // client before deleting; a backward seek past them restarts the producer
   final Duration pollInterval; // disk scan / waiter resolution cadence
-  final Duration segmentTimeout; // max wait for one segment (< hls.js fragLoadingTimeOut)
+  final Duration
+  segmentTimeout; // max wait for one segment (< hls.js fragLoadingTimeOut)
   final Duration idleKillDelay; // kill after this long with no active requests
-  final int restartReorderWindow; // serve-by-wait vs restart threshold (segments)
+  final int
+  restartReorderWindow; // serve-by-wait vs restart threshold (segments)
   // Verbose debug: ffmpeg at -loglevel verbose with live stderr passthrough,
   // lifecycle logging, and segment temp dirs kept on disk (never deleted).
   final bool debug;
@@ -132,9 +135,11 @@ class SegmentProducer {
     final safe = label.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '_');
     _tempDir = await Directory(config.tempRoot)
         .create(recursive: true)
-        .then((_) => Directory(
-                '${config.tempRoot}/vp_${safe}_${startSegment}_${DateTime.now().microsecondsSinceEpoch}')
-            .create(recursive: true));
+        .then(
+          (_) => Directory(
+            '${config.tempRoot}/vp_${safe}_${startSegment}_${DateTime.now().microsecondsSinceEpoch}',
+          ).create(recursive: true),
+        );
     _floor = startSegment;
 
     // Seek to the MIDPOINT of the target segment, not its start boundary.
@@ -199,8 +204,11 @@ class SegmentProducer {
 
     final exe = _useSetsid ? 'setsid' : config.ffmpegBin;
     final fullArgs = _useSetsid ? [config.ffmpegBin, ...args] : args;
-    Log.d('vp', '$label launch seg>=$startSegment ss=${seekStart.toStringAsFixed(3)} '
-        'dir=${_tempDir.path}\n    ${config.ffmpegBin} ${args.join(' ')}');
+    Log.d(
+      'vp',
+      '$label launch seg>=$startSegment ss=${seekStart.toStringAsFixed(3)} '
+          'dir=${_tempDir.path}\n    ${config.ffmpegBin} ${args.join(' ')}',
+    );
     final proc = await Process.start(exe, fullArgs);
     _process = proc;
 
@@ -235,8 +243,9 @@ class SegmentProducer {
     // ~(retainBehind + throttleAhead) segments per track. Debug keeps everything
     // for post-mortem. Segments below the new floor sit outside canServe(), so a
     // backward seek into them restarts the producer instead of 404ing.
-    final pruneBelow =
-        config.debug ? -1 : _clientSegment - config.retainBehindSegments;
+    final pruneBelow = config.debug
+        ? -1
+        : _clientSegment - config.retainBehindSegments;
     try {
       for (final e in _tempDir.listSync()) {
         if (e is! File) continue;
@@ -256,8 +265,11 @@ class SegmentProducer {
     }
     if (pruneBelow > _floor) _floor = pruneBelow;
     if (maxIdx > _highWater) {
-      Log.d('vp', '$label produced seg$_highWater→$maxIdx '
-          '(client@$_clientSegment, ahead=${maxIdx - _clientSegment})');
+      Log.d(
+        'vp',
+        '$label produced seg$_highWater→$maxIdx '
+            '(client@$_clientSegment, ahead=${maxIdx - _clientSegment})',
+      );
       _highWater = maxIdx;
       _maybeCheckTfdt();
       // Resolve any waiters whose segment is now on disk. Each waiter gets its
@@ -299,14 +311,18 @@ class SegmentProducer {
     // `-copyts` mux), so A/V stays in sync without any patch — leave it to
     // `-copyts` and just record the (rare) shift for diagnostics.
     if (Mp4Boxes.trafCount(bytes) > 1) {
-      stderr.writeln('[vp] $label seg$startSegment tfdt offset '
-          '${(offset / timescale).toStringAsFixed(3)}s (muxed — not patching, '
-          'A/V sync preserved)');
+      stderr.writeln(
+        '[vp] $label seg$startSegment tfdt offset '
+        '${(offset / timescale).toStringAsFixed(3)}s (muxed — not patching, '
+        'A/V sync preserved)',
+      );
       return;
     }
     _tfdtCorrection = offset; // subtract per segment → first lands at expected
-    stderr.writeln('[vp] $label seg$startSegment tfdt offset '
-        '${(offset / timescale).toStringAsFixed(3)}s — normalizing run');
+    stderr.writeln(
+      '[vp] $label seg$startSegment tfdt offset '
+      '${(offset / timescale).toStringAsFixed(3)}s — normalizing run',
+    );
   }
 
   /// Returns the init segment (`init.mp4`) bytes once ffmpeg has written it,
@@ -368,10 +384,11 @@ class SegmentProducer {
         final actual = raw / timescale;
         final drift = actual - boundaries[i];
         Log.d(
-            'vp',
-            '$label serve seg$i expected=${boundaries[i].toStringAsFixed(3)} '
-                'actual_tfdt=${actual.toStringAsFixed(3)} '
-                'drift=${drift >= 0 ? '+' : ''}${drift.toStringAsFixed(3)}s');
+          'vp',
+          '$label serve seg$i expected=${boundaries[i].toStringAsFixed(3)} '
+              'actual_tfdt=${actual.toStringAsFixed(3)} '
+              'drift=${drift >= 0 ? '+' : ''}${drift.toStringAsFixed(3)}s',
+        );
       }
     }
     return ref;
@@ -391,8 +408,7 @@ class SegmentProducer {
     Timer(config.segmentTimeout, () async {
       if (!c.isCompleted) {
         _waiters[i]?.remove(c);
-        c.complete(
-            _segFile(i).existsSync() ? await _openAndPatch(i) : null);
+        c.complete(_segFile(i).existsSync() ? await _openAndPatch(i) : null);
       }
     });
     return c.future;
@@ -427,7 +443,10 @@ class SegmentProducer {
     if (_state == _State.running && ahead >= config.throttleAheadSegments) {
       proc.kill(ProcessSignal.sigstop);
       _state = _State.throttled;
-      Log.d('vp', '$label SIGSTOP (ahead=$ahead >= ${config.throttleAheadSegments})');
+      Log.d(
+        'vp',
+        '$label SIGSTOP (ahead=$ahead >= ${config.throttleAheadSegments})',
+      );
     } else if (_state == _State.throttled &&
         ahead < config.throttleAheadSegments ~/ 2) {
       proc.kill(ProcessSignal.sigcont);
@@ -440,8 +459,10 @@ class SegmentProducer {
     if (_state == _State.dead) return;
     Log.d('vp', '$label ffmpeg exited code=$code (highWater=$_highWater)');
     if (code != 0) {
-      stderr.writeln('[vp] $label ffmpeg exit=$code: '
-          '${_stderr.toString().trim()}');
+      stderr.writeln(
+        '[vp] $label ffmpeg exit=$code: '
+        '${_stderr.toString().trim()}',
+      );
     }
     // One final scan so segments written just before exit resolve, then fail
     // the rest. (EOF: ffmpeg exits 0 after writing the last segment.)
@@ -473,7 +494,8 @@ class SegmentProducer {
 
     if (proc != null) {
       try {
-        if (wasThrottled) proc.kill(ProcessSignal.sigcont); // unpause to accept 'q'
+        if (wasThrottled)
+          proc.kill(ProcessSignal.sigcont); // unpause to accept 'q'
         proc.stdin.write('q\n');
         await proc.stdin.flush();
       } catch (_) {}

@@ -25,32 +25,32 @@ class TmdbMovie {
   });
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'title': title,
-        'originalTitle': originalTitle,
-        'overview': overview,
-        'posterUrl': posterUrl,
-        'backdropUrl': backdropUrl,
-        'releaseDate': releaseDate,
-        'runtime': runtime,
-        'voteAverage': voteAverage,
-        'genres': genres,
-      };
+    'id': id,
+    'title': title,
+    'originalTitle': originalTitle,
+    'overview': overview,
+    'posterUrl': posterUrl,
+    'backdropUrl': backdropUrl,
+    'releaseDate': releaseDate,
+    'runtime': runtime,
+    'voteAverage': voteAverage,
+    'genres': genres,
+  };
 
   factory TmdbMovie.fromJson(Map<String, dynamic> json) => TmdbMovie(
-        id: (json['id'] as num).toInt(),
-        title: (json['title'] as String?) ?? '',
-        originalTitle: json['originalTitle'] as String?,
-        overview: json['overview'] as String?,
-        posterUrl: json['posterUrl'] as String?,
-        backdropUrl: json['backdropUrl'] as String?,
-        releaseDate: json['releaseDate'] as String?,
-        runtime: (json['runtime'] as num?)?.toInt(),
-        voteAverage: (json['voteAverage'] as num?)?.toDouble(),
-        genres: ((json['genres'] as List?) ?? const [])
-            .map((e) => e as String)
-            .toList(),
-      );
+    id: (json['id'] as num).toInt(),
+    title: (json['title'] as String?) ?? '',
+    originalTitle: json['originalTitle'] as String?,
+    overview: json['overview'] as String?,
+    posterUrl: json['posterUrl'] as String?,
+    backdropUrl: json['backdropUrl'] as String?,
+    releaseDate: json['releaseDate'] as String?,
+    runtime: (json['runtime'] as num?)?.toInt(),
+    voteAverage: (json['voteAverage'] as num?)?.toDouble(),
+    genres: ((json['genres'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList(),
+  );
 
   /// Release year parsed from [releaseDate], if any.
   int? get year {

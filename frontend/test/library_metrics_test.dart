@@ -9,8 +9,9 @@ const _gib = 1024 * 1024 * 1024;
 const _mib = 1024 * 1024;
 
 void main() {
-  testWidgets('library shows per-film transfer metrics and library totals',
-      (tester) async {
+  testWidgets('library shows per-film transfer metrics and library totals', (
+    tester,
+  ) async {
     // Ratios are uploaded / totalSize — the formula Transmission itself uses.
     // `downloadedEver` is deliberately 0 on the second film (a cross-seed, or
     // any torrent after a ratio reset) to prove it isn't the denominator.
@@ -35,10 +36,14 @@ void main() {
       ),
     ];
 
-    await tester.pumpWidget(ProviderScope(
-      overrides: [libraryProvider.overrideWith((ref) => Stream.value(torrents))],
-      child: const MaterialApp(home: LibraryScreen()),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          libraryProvider.overrideWith((ref) => Stream.value(torrents)),
+        ],
+        child: const MaterialApp(home: LibraryScreen()),
+      ),
+    );
     await tester.pump(); // let the stream deliver
 
     // Per-film: up rate, bytes sent, ratio. Rates appear twice — once on the

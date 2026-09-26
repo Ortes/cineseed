@@ -34,7 +34,8 @@ class TorrentFileInfo {
   /// bytes of this file are a contiguous prefix — enough for VLC to start.
   bool get hasBytes => bytesCompleted > 0;
 
-  factory TorrentFileInfo.fromJson(Map<String, dynamic> json) => TorrentFileInfo(
+  factory TorrentFileInfo.fromJson(Map<String, dynamic> json) =>
+      TorrentFileInfo(
         index: (json['index'] as num?)?.toInt() ?? 0,
         name: json['name'] as String? ?? '',
         length: (json['length'] as num?)?.toInt() ?? 0,
@@ -43,12 +44,12 @@ class TorrentFileInfo {
       );
 
   Map<String, dynamic> toJson() => {
-        'index': index,
-        'name': name,
-        'length': length,
-        'bytesCompleted': bytesCompleted,
-        'onS3': onS3,
-      };
+    'index': index,
+    'name': name,
+    'length': length,
+    'bytesCompleted': bytesCompleted,
+    'onS3': onS3,
+  };
 }
 
 /// `/api/torrents/<hash>/files` — the torrent's video files plus the bit of
@@ -69,16 +70,18 @@ class TorrentFiles {
   bool get isSingleFile => files.length <= 1;
 
   factory TorrentFiles.fromJson(Map<String, dynamic> json) => TorrentFiles(
-        name: json['name'] as String? ?? '',
-        percentDone: (json['percentDone'] as num?)?.toDouble() ?? 0,
-        files: ((json['files'] as List?) ?? [])
-            .map((e) => TorrentFileInfo.fromJson((e as Map).cast<String, dynamic>()))
-            .toList(),
-      );
+    name: json['name'] as String? ?? '',
+    percentDone: (json['percentDone'] as num?)?.toDouble() ?? 0,
+    files: ((json['files'] as List?) ?? [])
+        .map(
+          (e) => TorrentFileInfo.fromJson((e as Map).cast<String, dynamic>()),
+        )
+        .toList(),
+  );
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'percentDone': percentDone,
-        'files': files.map((f) => f.toJson()).toList(),
-      };
+    'name': name,
+    'percentDone': percentDone,
+    'files': files.map((f) => f.toJson()).toList(),
+  };
 }

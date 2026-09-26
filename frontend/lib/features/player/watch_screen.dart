@@ -30,10 +30,8 @@ class WatchScreen extends ConsumerWidget {
     final files = ref.watch(torrentFilesProvider(hash));
 
     return files.when(
-      loading: () => const _Shell(
-        title: 'Watch',
-        child: CircularProgressIndicator(),
-      ),
+      loading: () =>
+          const _Shell(title: 'Watch', child: CircularProgressIndicator()),
       error: (e, _) => _Shell(
         title: 'Watch',
         child: Text(
@@ -68,12 +66,12 @@ class _Shell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: SelectableText(title, maxLines: 1)),
-        backgroundColor: CineseedColors.background,
-        body: Center(
-          child: Padding(padding: const EdgeInsets.all(24), child: child),
-        ),
-      );
+    appBar: AppBar(title: SelectableText(title, maxLines: 1)),
+    backgroundColor: CineseedColors.background,
+    body: Center(
+      child: Padding(padding: const EdgeInsets.all(24), child: child),
+    ),
+  );
 }
 
 class _FilePicker extends StatelessWidget {
@@ -109,7 +107,7 @@ class _FilePicker extends StatelessWidget {
                     ready == total
                         ? '$total files · all ready to stream'
                         : '$ready of $total ready to stream  ·  '
-                            '${(torrent.percentDone * 100).toStringAsFixed(1)} % downloaded',
+                              '${(torrent.percentDone * 100).toStringAsFixed(1)} % downloaded',
                     style: const TextStyle(
                       fontSize: 12,
                       color: CineseedColors.creamMuted,
@@ -153,11 +151,11 @@ class _FileTile extends ConsumerWidget {
     final status = file.onS3
         ? 'Ready to stream  ·  ${fmtBytes(file.length)}'
         : downloaded
-            ? 'Downloaded  ·  not on S3 yet'
-            : file.hasBytes
-                ? '${(file.percentDone * 100).toStringAsFixed(1)} %  ·  '
-                    'playable in VLC while downloading'
-                : 'Waiting  ·  ${fmtBytes(file.length)}';
+        ? 'Downloaded  ·  not on S3 yet'
+        : file.hasBytes
+        ? '${(file.percentDone * 100).toStringAsFixed(1)} %  ·  '
+              'playable in VLC while downloading'
+        : 'Waiting  ·  ${fmtBytes(file.length)}';
 
     void open() {
       // Marks the user gesture that lets the player autoplay. The episode name
@@ -212,8 +210,9 @@ class _FileTile extends ConsumerWidget {
                           child: LinearProgressIndicator(
                             value: file.percentDone,
                             minHeight: 2,
-                            backgroundColor:
-                                CineseedColors.outline.withValues(alpha: 0.4),
+                            backgroundColor: CineseedColors.outline.withValues(
+                              alpha: 0.4,
+                            ),
                             valueColor: const AlwaysStoppedAnimation(
                               CineseedColors.creamMuted,
                             ),
@@ -242,13 +241,18 @@ class _FileTile extends ConsumerWidget {
                       color: CineseedColors.creamMuted,
                     ),
                   Tooltip(
-                    message: 'Copy stream URL — then in VLC: '
+                    message:
+                        'Copy stream URL — then in VLC: '
                         '⌘N (Open Network), paste, Open',
                     child: IconButton(
                       icon: const Icon(Icons.content_copy_rounded, size: 18),
                       color: CineseedColors.creamMuted,
-                      onPressed: () => copyStreamUrl(context, ref, hash,
-                          fileIndex: file.index),
+                      onPressed: () => copyStreamUrl(
+                        context,
+                        ref,
+                        hash,
+                        fileIndex: file.index,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -258,15 +262,19 @@ class _FileTile extends ConsumerWidget {
                     icon: const Icon(Icons.download_rounded, size: 20),
                     color: CineseedColors.creamMuted,
                     onPressed: file.onS3
-                        ? () => downloadFile(context, ref, hash,
-                            fileIndex: file.index)
+                        ? () => downloadFile(
+                            context,
+                            ref,
+                            hash,
+                            fileIndex: file.index,
+                          )
                         : null,
                   ),
                   IconButton(
                     tooltip: file.onS3
                         ? 'Play in browser'
                         : 'Available once this file is on S3 — '
-                            'use the copy button for VLC',
+                              'use the copy button for VLC',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
                     color: file.onS3
                         ? CineseedColors.cream

@@ -13,11 +13,7 @@ import 'search_sort.dart';
 /// `tmdbId` matches. Pulled from the live `searchProvider` so we don't need to
 /// re-issue the query.
 class FilmScreen extends HookConsumerWidget {
-  const FilmScreen({
-    super.key,
-    required this.mediaType,
-    required this.tmdbId,
-  });
+  const FilmScreen({super.key, required this.mediaType, required this.tmdbId});
 
   final MediaType mediaType;
   final int tmdbId;
@@ -43,8 +39,9 @@ class FilmScreen extends HookConsumerWidget {
           .toList(),
       orElse: () => const <TorrentResult>[],
     );
-    final movie =
-        ref.watch(tmdbTitleProvider((type: mediaType, id: tmdbId))).value;
+    final movie = ref
+        .watch(tmdbTitleProvider((type: mediaType, id: tmdbId)))
+        .value;
 
     final clean = releases.isEmpty
         ? (name: 'Film #$tmdbId', year: null)
@@ -58,7 +55,9 @@ class FilmScreen extends HookConsumerWidget {
       try {
         await ref.read(apiClientProvider).addTorrent(infoHash);
         ref.invalidate(libraryProvider);
-        messenger.showSnackBar(const SnackBar(content: Text('Added to library')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Added to library')),
+        );
         router.go('/');
       } catch (e) {
         messenger.showSnackBar(SnackBar(content: Text('Failed: $e')));
@@ -93,8 +92,11 @@ class FilmScreen extends HookConsumerWidget {
                     itemCount: releases.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
-                      final sorted =
-                          sortReleases(releases, sortKey.value, sortDesc.value);
+                      final sorted = sortReleases(
+                        releases,
+                        sortKey.value,
+                        sortDesc.value,
+                      );
                       return ReleaseRow(
                         release: sorted[i],
                         onAdd: () => add(sorted[i].infoHash),
@@ -154,7 +156,8 @@ class _FilmHeader extends StatelessWidget {
                   width: 100,
                   height: 150,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox(width: 100, height: 150),
+                  errorBuilder: (_, __, ___) =>
+                      const SizedBox(width: 100, height: 150),
                 ),
               ),
             ),

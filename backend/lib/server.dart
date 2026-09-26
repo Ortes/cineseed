@@ -66,15 +66,16 @@ Future<HttpServer> startServer(Config config) async {
   final producerManager = ProducerManager(
     config: ProducerConfig(
       ffmpegBin: config.ffmpegBin,
-      tempRoot: config.hlsProducerTemp ??
-          '${Directory.systemTemp.path}/cineseed_hls',
+      tempRoot:
+          config.hlsProducerTemp ?? '${Directory.systemTemp.path}/cineseed_hls',
       targetSeconds: config.hlsSegmentSeconds,
       throttleAheadSegments: config.hlsThrottleAhead,
       debug: config.debug,
     ),
     maxSessions: config.hlsMaxSessions,
   );
-  await producerManager.sweepStaleTempDirs(); // clean leftovers from a prior run
+  await producerManager
+      .sweepStaleTempDirs(); // clean leftovers from a prior run
   final segments = SegmentGenerator(
     pool: pool,
     producerManager: producerManager,
@@ -103,18 +104,19 @@ Future<HttpServer> startServer(Config config) async {
 
   final root = Router();
   root.mount(
-      '/api',
-      buildApiRouter(
-        tracker: tracker,
-        client: client,
-        signer: signer,
-        downloadDir: config.downloadDir,
-        incompleteDir: config.incompleteDir,
-        hls: hls,
-        segments: segments,
-        tmdb: tmdb,
-        debug: config.debug,
-      ).call);
+    '/api',
+    buildApiRouter(
+      tracker: tracker,
+      client: client,
+      signer: signer,
+      downloadDir: config.downloadDir,
+      incompleteDir: config.incompleteDir,
+      hls: hls,
+      segments: segments,
+      tmdb: tmdb,
+      debug: config.debug,
+    ).call,
+  );
 
   // Static Flutter web build (prod). During local testing the frontend runs
   // separately, so this just 404s if there's no build.
@@ -128,7 +130,10 @@ Future<HttpServer> startServer(Config config) async {
   final indexFile = File('${config.publicDir}/index.html');
   final Handler spaFallback = (Request req) {
     final path = req.url.path;
-    if (path == 'api' || path.startsWith('api/') || !publicExists || !indexFile.existsSync()) {
+    if (path == 'api' ||
+        path.startsWith('api/') ||
+        !publicExists ||
+        !indexFile.existsSync()) {
       return Response.notFound('Not found.');
     }
     return Response.ok(
@@ -141,7 +146,8 @@ Future<HttpServer> startServer(Config config) async {
       .addMiddleware(logRequests())
       .addMiddleware(corsHeaders())
       .addHandler(
-          Cascade().add(root.call).add(staticHandler).add(spaFallback).handler);
+        Cascade().add(root.call).add(staticHandler).add(spaFallback).handler,
+      );
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, config.port);
 

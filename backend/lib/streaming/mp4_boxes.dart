@@ -96,7 +96,9 @@ class Mp4Boxes {
     if (p + 8 > init.length) return null;
     final entrySize = _u32(init, p);
     final entryType = String.fromCharCodes(init, p + 4, p + 8);
-    final fourcc = (entryType == 'hvc1' || entryType == 'hev1') ? entryType : null;
+    final fourcc = (entryType == 'hvc1' || entryType == 'hev1')
+        ? entryType
+        : null;
     if (fourcc == null) return null;
     // VisualSampleEntry: 8 (size+type) + 78 fixed bytes, then child boxes.
     final hvcc = _findIn(init, p + 8 + 78, p + entrySize, _hvcC);

@@ -8,5 +8,7 @@ Future<void> main() async {
   final env = loadDotenv();
   final config = Config.fromEnv(env);
   final server = await startServer(config);
-  print('Cineseed backend listening on http://${server.address.host}:${server.port}');
+  print(
+    'Cineseed backend listening on http://${server.address.host}:${server.port}',
+  );
 }

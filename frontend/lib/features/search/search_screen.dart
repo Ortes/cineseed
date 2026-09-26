@@ -100,15 +100,17 @@ class _ResultsTotals extends StatelessWidget {
     // Count distinct titles the same way [_FilmsList] groups them: by
     // (mediaType, tmdbId), so a movie and a TV show sharing an id count as two.
     final titleCount = list
-        .where((r) =>
-            r.tmdbId != null &&
-            (r.mediaType == MediaType.movie || r.mediaType == MediaType.tv))
+        .where(
+          (r) =>
+              r.tmdbId != null &&
+              (r.mediaType == MediaType.movie || r.mediaType == MediaType.tv),
+        )
         .map((r) => (r.mediaType, r.tmdbId))
         .toSet()
         .length;
     final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        );
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -179,23 +181,18 @@ class _FilmsList extends ConsumerWidget {
               crossAxisSpacing: 14,
               childAspectRatio: 0.48,
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                final e = entries[i];
-                return _FilmGridCell(
-                  mediaType: e.key.$1,
-                  tmdbId: e.key.$2,
-                  releases: e.value,
-                );
-              },
-              childCount: entries.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, i) {
+              final e = entries[i];
+              return _FilmGridCell(
+                mediaType: e.key.$1,
+                tmdbId: e.key.$2,
+                releases: e.value,
+              );
+            }, childCount: entries.length),
           ),
         ),
         if (orphansSorted.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _OrphansSection(releases: orphansSorted),
-          ),
+          SliverToBoxAdapter(child: _OrphansSection(releases: orphansSorted)),
       ],
     );
   }
@@ -219,13 +216,14 @@ class _FilmGridCell extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final hover = useState(false);
     final theme = Theme.of(context);
-    final movie =
-        ref.watch(tmdbTitleProvider((type: mediaType, id: tmdbId))).value;
+    final movie = ref
+        .watch(tmdbTitleProvider((type: mediaType, id: tmdbId)))
+        .value;
 
     // Fall back to the parsed release title until TMDB loads (or if it 404s).
-    final canonical = ([...releases]
-          ..sort((a, b) => b.seeders.compareTo(a.seeders)))
-        .first;
+    final canonical = ([
+      ...releases,
+    ]..sort((a, b) => b.seeders.compareTo(a.seeders))).first;
     final parsed = ReleaseTags.cleanTitle(canonical.title);
     final title = movie?.title ?? parsed.name;
     final year = movie?.year ?? parsed.year;
@@ -243,7 +241,11 @@ class _FilmGridCell extends HookConsumerWidget {
         curve: Curves.easeOut,
         transform: Matrix4.identity()
           ..scaleByDouble(
-              hover.value ? 1.025 : 1.0, hover.value ? 1.025 : 1.0, 1.0, 1.0),
+            hover.value ? 1.025 : 1.0,
+            hover.value ? 1.025 : 1.0,
+            1.0,
+            1.0,
+          ),
         transformAlignment: Alignment.center,
         child: Material(
           color: Colors.transparent,
@@ -262,7 +264,8 @@ class _FilmGridCell extends HookConsumerWidget {
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(
-                              alpha: hover.value ? 0.45 : 0.25),
+                            alpha: hover.value ? 0.45 : 0.25,
+                          ),
                           blurRadius: hover.value ? 14 : 8,
                           offset: const Offset(0, 4),
                         ),
@@ -382,8 +385,14 @@ List<String> _langTags(List<TorrentResult> rs) {
       found.add('MULTI');
     } else if (upper == 'VOSTFR') {
       found.add('VOSTFR');
-    } else if (const {'VFF', 'VFI', 'VFQ', 'VF2', 'VF', 'TRUEFRENCH'}
-        .contains(upper)) {
+    } else if (const {
+      'VFF',
+      'VFI',
+      'VFQ',
+      'VF2',
+      'VF',
+      'TRUEFRENCH',
+    }.contains(upper)) {
       found.add('VF');
     } else {
       found.add(upper);
@@ -391,18 +400,19 @@ List<String> _langTags(List<TorrentResult> rs) {
   }
   // Stable, readable order.
   const order = ['MULTI', 'VF', 'VOSTFR'];
-  final ordered = [
-    for (final k in order)
-      if (found.remove(k)) k,
-    ...found, // any unexpected leftovers, sorted alphabetically below
-  ]..sort((a, b) {
-      final ai = order.indexOf(a);
-      final bi = order.indexOf(b);
-      if (ai == -1 && bi == -1) return a.compareTo(b);
-      if (ai == -1) return 1;
-      if (bi == -1) return -1;
-      return ai.compareTo(bi);
-    });
+  final ordered =
+      [
+        for (final k in order)
+          if (found.remove(k)) k,
+        ...found, // any unexpected leftovers, sorted alphabetically below
+      ]..sort((a, b) {
+        final ai = order.indexOf(a);
+        final bi = order.indexOf(b);
+        if (ai == -1 && bi == -1) return a.compareTo(b);
+        if (ai == -1) return 1;
+        if (bi == -1) return -1;
+        return ai.compareTo(bi);
+      });
   return ordered;
 }
 

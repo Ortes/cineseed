@@ -18,16 +18,26 @@ class TmdbClient {
   final Map<int, TmdbMovie> _movieCache = {};
   final Map<int, TmdbMovie> _tvCache = {};
 
-  Future<TmdbMovie?> movie(int id) => _fetch('movie', id, _movieCache,
-      titleKey: 'title', originalTitleKey: 'original_title',
-      dateKey: 'release_date');
+  Future<TmdbMovie?> movie(int id) => _fetch(
+    'movie',
+    id,
+    _movieCache,
+    titleKey: 'title',
+    originalTitleKey: 'original_title',
+    dateKey: 'release_date',
+  );
 
   /// TV show by id via `/tv/{id}`. TMDB's TV schema differs (`name`,
   /// `first_air_date`, no top-level `runtime`), so those are normalized into
   /// the shared [TmdbMovie] shape.
-  Future<TmdbMovie?> tv(int id) => _fetch('tv', id, _tvCache,
-      titleKey: 'name', originalTitleKey: 'original_name',
-      dateKey: 'first_air_date');
+  Future<TmdbMovie?> tv(int id) => _fetch(
+    'tv',
+    id,
+    _tvCache,
+    titleKey: 'name',
+    originalTitleKey: 'original_name',
+    dateKey: 'first_air_date',
+  );
 
   Future<TmdbMovie?> _fetch(
     String kind,
@@ -40,10 +50,9 @@ class TmdbClient {
     final cached = cache[id];
     if (cached != null) return cached;
 
-    final uri = Uri.parse('$_apiBase/$kind/$id').replace(queryParameters: {
-      'api_key': apiKey,
-      'language': language,
-    });
+    final uri = Uri.parse(
+      '$_apiBase/$kind/$id',
+    ).replace(queryParameters: {'api_key': apiKey, 'language': language});
     final res = await http.get(uri);
     if (res.statusCode == 404) return null;
     if (res.statusCode != 200) {

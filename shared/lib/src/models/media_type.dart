@@ -21,10 +21,10 @@ enum MediaType {
   }
 
   factory MediaType.fromJson(String? value) => switch (value) {
-        'movie' => MediaType.movie,
-        'tv' => MediaType.tv,
-        _ => MediaType.other,
-      };
+    'movie' => MediaType.movie,
+    'tv' => MediaType.tv,
+    _ => MediaType.other,
+  };
 
   String toJson() => name;
 }

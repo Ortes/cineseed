@@ -29,7 +29,8 @@ class AudioTrack {
   String get label {
     final parts = <String>[];
     if (title != null && title!.isNotEmpty) parts.add(title!);
-    if (language != null && language!.isNotEmpty) parts.add(language!.toUpperCase());
+    if (language != null && language!.isNotEmpty)
+      parts.add(language!.toUpperCase());
     if (parts.isEmpty) parts.add('Audio ${order + 1}');
     return parts.join(' · ');
   }
@@ -50,7 +51,14 @@ class SubtitleTrack {
   });
 
   static const _textCodecs = {
-    'subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text', 'subviewer'
+    'subrip',
+    'srt',
+    'ass',
+    'ssa',
+    'mov_text',
+    'webvtt',
+    'text',
+    'subviewer',
   };
 
   bool get isText => _textCodecs.contains(codec.toLowerCase());
@@ -58,7 +66,8 @@ class SubtitleTrack {
   String get label {
     final parts = <String>[];
     if (title != null && title!.isNotEmpty) parts.add(title!);
-    if (language != null && language!.isNotEmpty) parts.add(language!.toUpperCase());
+    if (language != null && language!.isNotEmpty)
+      parts.add(language!.toUpperCase());
     if (parts.isEmpty) parts.add('Sub ${order + 1}');
     return parts.join(' · ');
   }
@@ -68,7 +77,11 @@ class VideoTrack {
   final String codec;
   final int width;
   final int height;
-  const VideoTrack({required this.codec, required this.width, required this.height});
+  const VideoTrack({
+    required this.codec,
+    required this.width,
+    required this.height,
+  });
 }
 
 /// Result of probing the source: one video track + audio/subtitle renditions.
@@ -86,10 +99,15 @@ class MediaProbe {
   });
 
   /// Runs `ffprobe` (headers only — cheap) against a URL or path.
-  static Future<MediaProbe?> run(String source, {String ffprobe = 'ffprobe'}) async {
+  static Future<MediaProbe?> run(
+    String source, {
+    String ffprobe = 'ffprobe',
+  }) async {
     final res = await Process.run(ffprobe, [
-      '-v', 'quiet',
-      '-print_format', 'json',
+      '-v',
+      'quiet',
+      '-print_format',
+      'json',
       '-show_streams',
       '-show_format',
       source,
@@ -102,7 +120,8 @@ class MediaProbe {
       return null;
     }
 
-    final streams = (json['streams'] as List? ?? []).cast<Map<String, dynamic>>();
+    final streams = (json['streams'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     VideoTrack? video;
     final audio = <AudioTrack>[];
     final subtitles = <SubtitleTrack>[];
@@ -126,22 +145,26 @@ class MediaProbe {
           );
         case 'audio':
           final disp = (s['disposition'] as Map?)?.cast<String, dynamic>();
-          audio.add(AudioTrack(
-            order: aOrder++,
-            codec: codec,
-            channels: (s['channels'] as num?)?.toInt() ?? 2,
-            sampleRate: int.tryParse('${s['sample_rate'] ?? ''}') ?? 48000,
-            language: lang,
-            title: title,
-            isDefault: disp != null && disp['default'] == 1,
-          ));
+          audio.add(
+            AudioTrack(
+              order: aOrder++,
+              codec: codec,
+              channels: (s['channels'] as num?)?.toInt() ?? 2,
+              sampleRate: int.tryParse('${s['sample_rate'] ?? ''}') ?? 48000,
+              language: lang,
+              title: title,
+              isDefault: disp != null && disp['default'] == 1,
+            ),
+          );
         case 'subtitle':
-          subtitles.add(SubtitleTrack(
-            order: sOrder++,
-            codec: codec,
-            language: lang,
-            title: title,
-          ));
+          subtitles.add(
+            SubtitleTrack(
+              order: sOrder++,
+              codec: codec,
+              language: lang,
+              title: title,
+            ),
+          );
       }
     }
 

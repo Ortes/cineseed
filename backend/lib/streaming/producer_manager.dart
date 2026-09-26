@@ -36,7 +36,10 @@ class ProducerManager {
     if (!root.existsSync()) return;
     for (final e in root.listSync()) {
       if (e is Directory &&
-          e.uri.pathSegments.where((s) => s.isNotEmpty).last.startsWith('vp_')) {
+          e.uri.pathSegments
+              .where((s) => s.isNotEmpty)
+              .last
+              .startsWith('vp_')) {
         if (config.debug) {
           Log.d('pm', 'KEEP stale temp dir (debug): ${e.path}');
           continue;
@@ -72,8 +75,11 @@ class ProducerManager {
       var p = _active[key];
       if (p == null || !p.isAlive || !p.canServe(i)) {
         if (p != null) {
-          Log.d('pm', '$key restart for seg$i '
-              '(was@${p.startSegment}..${p.highWater}, alive=${p.isAlive})');
+          Log.d(
+            'pm',
+            '$key restart for seg$i '
+                '(was@${p.startSegment}..${p.highWater}, alive=${p.isAlive})',
+          );
           await p.kill();
           _active.remove(key);
         } else {
@@ -183,8 +189,9 @@ class ProducerManager {
   /// for the *live* track then queue past `connectionTimeout` and seeks 404.
   Future<void> _killOtherTracks(String key) async {
     final hash = _hashOf(key);
-    final stale =
-        _active.keys.where((k) => k != key && _hashOf(k) == hash).toList();
+    final stale = _active.keys
+        .where((k) => k != key && _hashOf(k) == hash)
+        .toList();
     for (final k in stale) {
       Log.d('pm', 'kill orphaned track $k (switched to $key)');
       final p = _active.remove(k);
@@ -210,7 +217,10 @@ class ProducerManager {
         }
       }
       if (victim == null) break;
-      Log.d('pm', 'evict LRU session $victim (cap=$maxSessions, keep=$keepHash)');
+      Log.d(
+        'pm',
+        'evict LRU session $victim (cap=$maxSessions, keep=$keepHash)',
+      );
       await killSession(victim);
     }
   }

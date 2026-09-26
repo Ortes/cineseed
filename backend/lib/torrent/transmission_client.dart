@@ -22,13 +22,13 @@ class TransmissionClient implements TorrentClient {
     this.user,
     this.pass,
     http.Client? client,
-  })  : rpcUrl = Uri.parse(url),
-        _http = client ?? http.Client();
+  }) : rpcUrl = Uri.parse(url),
+       _http = client ?? http.Client();
 
   Future<Map<String, dynamic>> _call(
-      String method, [
-      Map<String, dynamic> arguments = const {},
-      ]) async {
+    String method, [
+    Map<String, dynamic> arguments = const {},
+  ]) async {
     final body = jsonEncode({'method': method, 'arguments': arguments});
 
     var res = await _send(body);
@@ -64,8 +64,9 @@ class TransmissionClient implements TorrentClient {
       'paused': paused,
     });
     // torrent-add returns either `torrent-added` or `torrent-duplicate`.
-    final added = (args['torrent-added'] ?? args['torrent-duplicate'])
-        as Map<String, dynamic>?;
+    final added =
+        (args['torrent-added'] ?? args['torrent-duplicate'])
+            as Map<String, dynamic>?;
     final hash = added?['hashString'] as String?;
     if (hash != null) await setSequential(hash, true);
   }
@@ -103,7 +104,8 @@ class TransmissionClient implements TorrentClient {
         'isFinished',
       ],
     });
-    final torrents = (args['torrents'] as List? ?? []).cast<Map<String, dynamic>>();
+    final torrents = (args['torrents'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     return torrents.map(TorrentState.fromJson).toList();
   }
 
@@ -113,16 +115,19 @@ class TransmissionClient implements TorrentClient {
       'ids': [hash],
       'fields': ['name', 'files'],
     });
-    final torrents = (args['torrents'] as List? ?? []).cast<Map<String, dynamic>>();
+    final torrents = (args['torrents'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     if (torrents.isEmpty) return const [];
-    final files =
-        (torrents.first['files'] as List? ?? []).cast<Map<String, dynamic>>();
+    final files = (torrents.first['files'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     return files
-        .map((f) => TorrentFile(
-              f['name'] as String? ?? '',
-              (f['length'] as num?)?.toInt() ?? 0,
-              (f['bytesCompleted'] as num?)?.toInt() ?? 0,
-            ))
+        .map(
+          (f) => TorrentFile(
+            f['name'] as String? ?? '',
+            (f['length'] as num?)?.toInt() ?? 0,
+            (f['bytesCompleted'] as num?)?.toInt() ?? 0,
+          ),
+        )
         .toList();
   }
 
@@ -130,25 +135,21 @@ class TransmissionClient implements TorrentClient {
   Future<TorrentStreamInfo?> streamInfo(String hash) async {
     final args = await _call('torrent-get', {
       'ids': [hash],
-      'fields': [
-        'name',
-        'downloadDir',
-        'percentDone',
-        'isFinished',
-        'files',
-      ],
+      'fields': ['name', 'downloadDir', 'percentDone', 'isFinished', 'files'],
     });
-    final torrents =
-        (args['torrents'] as List? ?? []).cast<Map<String, dynamic>>();
+    final torrents = (args['torrents'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
     if (torrents.isEmpty) return null;
     final t = torrents.first;
     final files = (t['files'] as List? ?? [])
         .cast<Map<String, dynamic>>()
-        .map((f) => TorrentFile(
-              f['name'] as String? ?? '',
-              (f['length'] as num?)?.toInt() ?? 0,
-              (f['bytesCompleted'] as num?)?.toInt() ?? 0,
-            ))
+        .map(
+          (f) => TorrentFile(
+            f['name'] as String? ?? '',
+            (f['length'] as num?)?.toInt() ?? 0,
+            (f['bytesCompleted'] as num?)?.toInt() ?? 0,
+          ),
+        )
         .toList();
     return TorrentStreamInfo(
       name: t['name'] as String? ?? '',
@@ -160,14 +161,21 @@ class TransmissionClient implements TorrentClient {
   }
 
   @override
-  Future<void> start(String hash) => _call('torrent-start', {'ids': [hash]});
+  Future<void> start(String hash) => _call('torrent-start', {
+    'ids': [hash],
+  });
 
   @override
-  Future<void> stop(String hash) => _call('torrent-stop', {'ids': [hash]});
+  Future<void> stop(String hash) => _call('torrent-stop', {
+    'ids': [hash],
+  });
 
   @override
   Future<void> remove(String hash, {bool deleteData = false}) =>
-      _call('torrent-remove', {'ids': [hash], 'delete-local-data': deleteData});
+      _call('torrent-remove', {
+        'ids': [hash],
+        'delete-local-data': deleteData,
+      });
 
   @override
   Future<void> setLocation(String hash, String location, {bool move = false}) =>

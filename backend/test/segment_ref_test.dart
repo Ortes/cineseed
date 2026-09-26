@@ -37,8 +37,14 @@ Uint8List buildSegment(int tfdt, List<int> payload) {
 
   // tfdt v0: [version+flags = 4][baseMediaDecodeTime = 4]
   final tfdtContent = <int>[
-    0, 0, 0, 0,
-    (tfdt >> 24) & 0xff, (tfdt >> 16) & 0xff, (tfdt >> 8) & 0xff, tfdt & 0xff,
+    0,
+    0,
+    0,
+    0,
+    (tfdt >> 24) & 0xff,
+    (tfdt >> 16) & 0xff,
+    (tfdt >> 8) & 0xff,
+    tfdt & 0xff,
   ];
   final tfdtBox = BytesBuilder()
     ..add([0, 0, 0, 16])
@@ -88,25 +94,27 @@ void main() {
     expect(Mp4Boxes.moofEnd(Uint8List.sublistView(seg, 0, 40)), isNull);
   });
 
-  test('patches tfdt from the header alone and streams the mdat untouched',
-      () async {
-    final payload = List.generate(200000, (i) => i & 0xff);
-    final f = await write('0.m4s', buildSegment(9000, payload));
+  test(
+    'patches tfdt from the header alone and streams the mdat untouched',
+    () async {
+      final payload = List.generate(200000, (i) => i & 0xff);
+      final f = await write('0.m4s', buildSegment(9000, payload));
 
-    final ref = await SegmentRef.open(f, correction: 3000);
-    expect(ref, isNotNull);
-    // Only the moof is in memory, not the ~200 KB mdat.
-    expect(ref!.head.length, 48);
-    expect(ref.total, 48 + 8 + payload.length);
-    expect(ref.tfdt, 6000); // 9000 - 3000
+      final ref = await SegmentRef.open(f, correction: 3000);
+      expect(ref, isNotNull);
+      // Only the moof is in memory, not the ~200 KB mdat.
+      expect(ref!.head.length, 48);
+      expect(ref.total, 48 + 8 + payload.length);
+      expect(ref.tfdt, 6000); // 9000 - 3000
 
-    final bytes = await drain(ref);
-    expect(bytes.length, ref.total);
-    // The patch is visible in the served bytes...
-    expect(Mp4Boxes.readTfdt(bytes), 6000);
-    // ...and the payload survived the head/body split exactly.
-    expect(bytes.sublist(48 + 8), payload);
-  });
+      final bytes = await drain(ref);
+      expect(bytes.length, ref.total);
+      // The patch is visible in the served bytes...
+      expect(Mp4Boxes.readTfdt(bytes), 6000);
+      // ...and the payload survived the head/body split exactly.
+      expect(bytes.sublist(48 + 8), payload);
+    },
+  );
 
   test('zero correction leaves the tfdt alone', () async {
     final f = await write('0.m4s', buildSegment(4242, [1, 2, 3, 4]));
@@ -131,19 +139,24 @@ void main() {
     expect(bytes.sublist(48 + 8), payload);
   });
 
-  test('a header-less file streams verbatim, but not when a patch is needed',
-      () async {
-    // Partially-written or non-fMP4 content: servable as-is, but a run needing a
-    // tfdt correction cannot patch it, and an unpatched segment would desync the
-    // MSE timeline — so that case must fail rather than serve bad bytes.
-    final f = await write('0.m4s', Uint8List.fromList('not-an-mp4'.codeUnits));
-    final plain = await SegmentRef.open(f);
-    expect(plain, isNotNull);
-    expect(plain!.head, isEmpty);
-    expect(await drain(plain), 'not-an-mp4'.codeUnits);
+  test(
+    'a header-less file streams verbatim, but not when a patch is needed',
+    () async {
+      // Partially-written or non-fMP4 content: servable as-is, but a run needing a
+      // tfdt correction cannot patch it, and an unpatched segment would desync the
+      // MSE timeline — so that case must fail rather than serve bad bytes.
+      final f = await write(
+        '0.m4s',
+        Uint8List.fromList('not-an-mp4'.codeUnits),
+      );
+      final plain = await SegmentRef.open(f);
+      expect(plain, isNotNull);
+      expect(plain!.head, isEmpty);
+      expect(await drain(plain), 'not-an-mp4'.codeUnits);
 
-    expect(await SegmentRef.open(f, correction: 500), isNull);
-  });
+      expect(await SegmentRef.open(f, correction: 500), isNull);
+    },
+  );
 
   test('empty and missing files yield null', () async {
     final empty = await write('e.m4s', Uint8List(0));
@@ -184,8 +197,10 @@ void main() {
     test('dispose releases every part', () async {
       final a = await write('0.m4s', buildSegment(0, [1]));
       final b = await write('1.m4s', buildSegment(1, [2]));
-      final mux =
-          MuxedSegment([(await SegmentRef.open(a))!, (await SegmentRef.open(b))!]);
+      final mux = MuxedSegment([
+        (await SegmentRef.open(a))!,
+        (await SegmentRef.open(b))!,
+      ]);
       await mux.dispose();
       await mux.dispose();
     });

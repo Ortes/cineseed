@@ -13,12 +13,18 @@ import '../../core/providers.dart';
 /// Resolves the stream URL (presigned S3 when complete, local growing-file
 /// route otherwise) and copies it. The user pastes it into VLC ▸ File ▸ Open
 /// Network — VLC tolerates both modes (HEVC, Dolby, growing files).
-Future<void> copyStreamUrl(BuildContext context, WidgetRef ref, String hash,
-    {int? fileIndex}) async {
+Future<void> copyStreamUrl(
+  BuildContext context,
+  WidgetRef ref,
+  String hash, {
+  int? fileIndex,
+}) async {
   final messenger = ScaffoldMessenger.of(context);
   String url;
   try {
-    url = await ref.read(apiClientProvider).streamUrl(hash, fileIndex: fileIndex);
+    url = await ref
+        .read(apiClientProvider)
+        .streamUrl(hash, fileIndex: fileIndex);
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text('Could not get URL: $e')));
     return;
@@ -36,22 +42,31 @@ Future<void> copyStreamUrl(BuildContext context, WidgetRef ref, String hash,
 /// attachment`) and hands it to the platform via `url_launcher`. The URL's
 /// `attachment` disposition makes the browser save the file rather than
 /// navigate to it — no new tab, no copy/paste.
-Future<void> downloadFile(BuildContext context, WidgetRef ref, String hash,
-    {int? fileIndex}) async {
+Future<void> downloadFile(
+  BuildContext context,
+  WidgetRef ref,
+  String hash, {
+  int? fileIndex,
+}) async {
   final messenger = ScaffoldMessenger.of(context);
   String url;
   try {
-    url =
-        await ref.read(apiClientProvider).downloadUrl(hash, fileIndex: fileIndex);
+    url = await ref
+        .read(apiClientProvider)
+        .downloadUrl(hash, fileIndex: fileIndex);
   } catch (e) {
-    messenger
-        .showSnackBar(SnackBar(content: Text('Could not start download: $e')));
+    messenger.showSnackBar(
+      SnackBar(content: Text('Could not start download: $e')),
+    );
     return;
   }
   final ok = await launchUrl(Uri.parse(url), webOnlyWindowName: '_self');
   if (!context.mounted) return;
-  messenger.showSnackBar(SnackBar(
-      content: Text(ok ? 'Download started' : 'Could not start download')));
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(ok ? 'Download started' : 'Could not start download'),
+    ),
+  );
 }
 
 /// Copies [url] to the clipboard and shows [successMessage].
@@ -107,7 +122,8 @@ Future<void> _showCopyUrlDialog(BuildContext context, String url, String hint) {
               messenger.showSnackBar(const SnackBar(content: Text('Copied')));
             } catch (e) {
               messenger.showSnackBar(
-                  SnackBar(content: Text('Copy failed: $e — select manually')));
+                SnackBar(content: Text('Copy failed: $e — select manually')),
+              );
             }
           },
         ),

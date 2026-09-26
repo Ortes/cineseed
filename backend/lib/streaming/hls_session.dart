@@ -58,6 +58,7 @@ class HlsSession {
   Future<Uint8List>? videoInitFuture; // dedupes concurrent init builds
   int? videoTimescale;
   String? videoCodecString;
+
   /// `'s:<order>:<i>'` -> WebVTT segment, bounded LRU.
   ///
   /// Kept bounded because a session stays alive as long as it is being watched:
@@ -124,7 +125,10 @@ class HlsSession {
   /// averages ~[target]s in practice, so the segment count is comparable.
   /// [target] is no longer used (kept for the caller's signature).
   static List<double> computeBoundaries(
-      List<double> keyframes, double duration, double target) {
+    List<double> keyframes,
+    double duration,
+    double target,
+  ) {
     if (keyframes.isEmpty) return [0, duration];
     final b = <double>[keyframes.first < 0.5 ? 0.0 : keyframes.first];
     for (final k in keyframes) {
@@ -156,7 +160,9 @@ class HlsSession {
   /// keyframe (the only `-ss`-anchor-independent rule), and the server serves a
   /// group by concatenating its producer files (valid CMAF-style multi-moof).
   static (List<double>, List<int>) groupBoundaries(
-      List<double> fine, double minDur) {
+    List<double> fine,
+    double minDur,
+  ) {
     if (fine.length <= 2) return (List.of(fine), [0, fine.length - 1]);
     final gs = <int>[0];
     var cur = 0;
@@ -262,8 +268,9 @@ class HlsSessionManager {
   /// URL) keeps getting fresh chunks. Best-effort: a failure leaves the existing
   /// upstream in place. Cached chunks are unaffected.
   Future<void> _maybeRefreshUrl(HlsSession s) async {
-    if (DateTime.now()
-        .isBefore(s.urlExpiresAt.subtract(const Duration(minutes: 5)))) {
+    if (DateTime.now().isBefore(
+      s.urlExpiresAt.subtract(const Duration(minutes: 5)),
+    )) {
       return;
     }
     try {
@@ -307,11 +314,17 @@ class HlsSessionManager {
     final cues = await cuesF;
     if (cues == null) return null; // no usable index → ineligible
 
-    final duration = cues.durationSeconds ?? probe.duration ?? cues.keyframeTimes.last;
+    final duration =
+        cues.durationSeconds ?? probe.duration ?? cues.keyframeTimes.last;
     final producerBoundaries = HlsSession.computeBoundaries(
-        cues.keyframeTimes, duration, targetSegmentSeconds);
+      cues.keyframeTimes,
+      duration,
+      targetSegmentSeconds,
+    );
     final (boundaries, groupStart) = HlsSession.groupBoundaries(
-        producerBoundaries, targetSegmentSeconds);
+      producerBoundaries,
+      targetSegmentSeconds,
+    );
 
     final session = HlsSession(
       id: id,
@@ -326,10 +339,13 @@ class HlsSessionManager {
     );
     _cache[id] = session;
     _enforceCap();
-    Log.d('hls', '$id session built: ${file.name} '
-        'dur=${duration.toStringAsFixed(1)}s segs=${session.segmentCount} '
-        'video=${probe.video?.codec} audio=${probe.audio.length} '
-        'subs=${probe.subtitles.length}');
+    Log.d(
+      'hls',
+      '$id session built: ${file.name} '
+          'dur=${duration.toStringAsFixed(1)}s segs=${session.segmentCount} '
+          'video=${probe.video?.codec} audio=${probe.audio.length} '
+          'subs=${probe.subtitles.length}',
+    );
     onReady?.call(session); // pre-warm video init (fire-and-forget)
     return session;
   }

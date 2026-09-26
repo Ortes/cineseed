@@ -37,10 +37,7 @@ class ReleaseRow extends StatelessWidget {
     return InkWell(
       onTap: onAdd,
       child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: dense ? 6 : 10,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: dense ? 6 : 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -378,8 +375,9 @@ class _HeaderLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color =
-        active ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
+    final color = active
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant;
     return InkWell(
       onTap: onTap,
       child: Padding(

@@ -9,13 +9,16 @@ void main() {
   testWidgets('App builds', (tester) async {
     // The library polls the backend from its first frame; a widget test must
     // not hit the network (it left a pending timer that failed the test).
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        libraryProvider
-            .overrideWith((ref) => Stream.value(const <TorrentState>[])),
-      ],
-      child: const CineseedApp(),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          libraryProvider.overrideWith(
+            (ref) => Stream.value(const <TorrentState>[]),
+          ),
+        ],
+        child: const CineseedApp(),
+      ),
+    );
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

@@ -77,7 +77,9 @@ class MkvCues {
   }
 
   static Future<MkvCues?> _parseSegment(
-      _RangeReader reader, int segDataStart) async {
+    _RangeReader reader,
+    int segDataStart,
+  ) async {
     // Walk the Segment's direct children headers (cheap: only headers are read)
     // to locate SeekHead + Info. Most mkvmerge files put SeekHead first.
     int? cuesPos; // absolute offset of Cues element
@@ -95,7 +97,11 @@ class MkvCues {
       final absStart = segDataStart + off;
       if (el.id == _idSeekHead) {
         final res = _parseSeekHead(
-            front, el.contentStart, el.contentStart + el.size, segDataStart);
+          front,
+          el.contentStart,
+          el.contentStart + el.size,
+          segDataStart,
+        );
         cuesPos ??= res.cuesPos;
         infoPos ??= res.infoPos;
         tracksPos ??= res.tracksPos;
@@ -120,7 +126,11 @@ class MkvCues {
       final el = _readElementHeader(sh, 0);
       if (el != null && el.id == _idSeekHead) {
         final res = _parseSeekHead(
-            sh, el.contentStart, el.contentStart + el.size, segDataStart);
+          sh,
+          el.contentStart,
+          el.contentStart + el.size,
+          segDataStart,
+        );
         cuesPos ??= res.cuesPos;
         infoPos ??= res.infoPos;
         tracksPos ??= res.tracksPos;
@@ -136,8 +146,9 @@ class MkvCues {
     // snap back to the real keyframe, so the segment's content/duration no
     // longer match the boundary we assign — tolerated on sequential append but
     // breaks decode on seek. Null → couldn't resolve it; fall back to all cues.
-    final videoTrack =
-        tracksPos != null ? await _readVideoTrackNumber(reader, tracksPos) : null;
+    final videoTrack = tracksPos != null
+        ? await _readVideoTrackNumber(reader, tracksPos)
+        : null;
 
     // TimecodeScale (default 1ms) + optional Duration from Info.
     var timecodeScale = 1000000; // ns per tick
@@ -226,7 +237,11 @@ class MkvCues {
   }
 
   static _SeekHeadResult _parseSeekHead(
-      Uint8List b, int start, int end, int segDataStart) {
+    Uint8List b,
+    int start,
+    int end,
+    int segDataStart,
+  ) {
     int? cuesPos, infoPos, seekHeadPos, tracksPos;
     var off = start;
     while (off + 2 < end && off + 2 < b.length) {
@@ -268,7 +283,9 @@ class MkvCues {
   /// first video track (TrackType == 1), or null if none/unparseable. The
   /// number is what CuePoints reference via CueTrack.
   static Future<int?> _readVideoTrackNumber(
-      _RangeReader reader, int tracksPos) async {
+    _RangeReader reader,
+    int tracksPos,
+  ) async {
     try {
       final buf = await reader.read(tracksPos, 256 * 1024);
       final tracks = _readElementHeader(buf, 0);
@@ -381,7 +398,11 @@ class _SeekHeadResult {
   final int? seekHeadPos;
   final int? tracksPos;
   const _SeekHeadResult(
-      this.cuesPos, this.infoPos, this.seekHeadPos, this.tracksPos);
+    this.cuesPos,
+    this.infoPos,
+    this.seekHeadPos,
+    this.tracksPos,
+  );
 }
 
 /// Fetches byte ranges from a URL via HTTP `Range` requests.

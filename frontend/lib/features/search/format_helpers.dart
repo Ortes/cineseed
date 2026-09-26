@@ -22,7 +22,8 @@ String fmtRate(int bytesPerSecond) =>
 String fmtBytes(int bytes) => bytes <= 0 ? '0 B' : fmtSize(bytes);
 
 /// Share ratio → two decimals, "—" when there's nothing to divide by.
-String fmtRatio(double? ratio) => ratio == null ? '—' : ratio.toStringAsFixed(2);
+String fmtRatio(double? ratio) =>
+    ratio == null ? '—' : ratio.toStringAsFixed(2);
 
 /// DateTime → short relative age ("3 d", "2 mo", "1 y").
 String fmtAge(DateTime? d) {

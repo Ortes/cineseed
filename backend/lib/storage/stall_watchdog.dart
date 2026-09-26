@@ -26,8 +26,7 @@ Future<void> awaitProgress({
     watchdog?.cancel();
     watchdog = Timer(stallTimeout, () {
       if (stalled.isCompleted) return;
-      stalled.completeError(
-          TimeoutException('$what stalled', stallTimeout));
+      stalled.completeError(TimeoutException('$what stalled', stallTimeout));
     });
   }
 

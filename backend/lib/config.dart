@@ -17,8 +17,10 @@ class Config {
   final int streamUrlTtl; // seconds
   final int port;
   final String publicDir;
-  final String downloadDir; // final destination (e.g. an rclone mount of the S3 bucket)
-  final String incompleteDir; // local disk where Transmission writes during download
+  final String
+  downloadDir; // final destination (e.g. an rclone mount of the S3 bucket)
+  final String
+  incompleteDir; // local disk where Transmission writes during download
   final String? tmdbApiKey; // optional — disables /api/tmdb when empty
   // Live HLS streaming knobs.
   final String ffmpegBin;
@@ -36,7 +38,8 @@ class Config {
   final int hlsThrottleAhead; // pause ffmpeg when this many segments ahead
   final int hlsMaxSessions; // concurrent live video producers
   final int hlsSessionIdleTtl; // seconds a session may idle before eviction
-  final String? hlsProducerTemp; // temp root for produced segments (null => system temp)
+  final String?
+  hlsProducerTemp; // temp root for produced segments (null => system temp)
   // Verbose debug mode: full ffmpeg/producer/session logging + keep all segment
   // files on disk (no cleanup). Exposed to the frontend via GET /api/config.
   final bool debug;
@@ -95,7 +98,9 @@ class Config {
       trackerApiKey: required('CINESEED_TRACKER_APIKEY'),
       trackerBaseUrl: required('CINESEED_TRACKER_BASEURL'),
       transmissionUrl: optional(
-          'TRANSMISSION_URL', 'http://localhost:9091/transmission/rpc'),
+        'TRANSMISSION_URL',
+        'http://localhost:9091/transmission/rpc',
+      ),
       transmissionUser: env['TRANSMISSION_USER'],
       transmissionPass: env['TRANSMISSION_PASS'],
       s3Endpoint: required('S3_ENDPOINT'),
@@ -125,8 +130,7 @@ class Config {
       // exhausted RAM and froze the whole process in kernel direct-reclaim (PSI
       // full-memory stalls, CPU never full). This is the only sizeable in-memory
       // cache; 64 MB leaves reclaimable headroom for ffmpeg.
-      hlsProxyCacheMb:
-          int.tryParse(optional('HLS_PROXY_CACHE_MB', '64')) ?? 64,
+      hlsProxyCacheMb: int.tryParse(optional('HLS_PROXY_CACHE_MB', '64')) ?? 64,
       hlsProxyMaxServeMb:
           int.tryParse(optional('HLS_PROXY_MAX_SERVE_MB', '16')) ?? 16,
       // Bounds how many chunks live responses can hold references to at once.

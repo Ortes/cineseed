@@ -25,22 +25,50 @@ Future<void> main(List<String> args) async {
     final dir = await Directory.systemTemp.createTemp('pp_');
     final sw = Stopwatch()..start();
     final res = await Process.run('ffmpeg', [
-      '-nostdin', '-y', '-loglevel', 'error',
-      '-multiple_requests', '1', '-rw_timeout', '30000000',
-      '-ss', start.toStringAsFixed(3), '-i', local,
-      '-t', '7.5', '-map', '0:v:0', '-c:v', 'copy', '-tag:v', 'hvc1',
-      '-f', 'hls', '-hls_time', '5.9', '-hls_segment_type', 'fmp4',
-      '-hls_fmp4_init_filename', 'init.mp4',
-      '-hls_segment_filename', '${dir.path}/seg%d.m4s',
-      '-hls_list_size', '0', '-hls_flags', 'independent_segments',
+      '-nostdin',
+      '-y',
+      '-loglevel',
+      'error',
+      '-multiple_requests',
+      '1',
+      '-rw_timeout',
+      '30000000',
+      '-ss',
+      start.toStringAsFixed(3),
+      '-i',
+      local,
+      '-t',
+      '7.5',
+      '-map',
+      '0:v:0',
+      '-c:v',
+      'copy',
+      '-tag:v',
+      'hvc1',
+      '-f',
+      'hls',
+      '-hls_time',
+      '5.9',
+      '-hls_segment_type',
+      'fmp4',
+      '-hls_fmp4_init_filename',
+      'init.mp4',
+      '-hls_segment_filename',
+      '${dir.path}/seg%d.m4s',
+      '-hls_list_size',
+      '0',
+      '-hls_flags',
+      'independent_segments',
       '${dir.path}/out.m3u8',
     ]);
     sw.stop();
     final f = File('${dir.path}/seg0.m4s');
     final bytes = f.existsSync() ? f.lengthSync() : 0;
-    stdout.writeln('seg@${start.toString().padRight(6)} '
-        '${(sw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
-        'exit=${res.exitCode} bytes=$bytes');
+    stdout.writeln(
+      'seg@${start.toString().padRight(6)} '
+      '${(sw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
+      'exit=${res.exitCode} bytes=$bytes',
+    );
     if (res.exitCode != 0) stderr.writeln(res.stderr);
     await dir.delete(recursive: true);
   }
@@ -56,14 +84,20 @@ Future<void> main(List<String> args) async {
   await seg(6);
   await seg(1800);
 
-  stdout.writeln('=== CONCURRENT burst: 3 raw ffmpegs at FRONT (like the harness) ===');
+  stdout.writeln(
+    '=== CONCURRENT burst: 3 raw ffmpegs at FRONT (like the harness) ===',
+  );
   final sw = Stopwatch()..start();
-  await Future.wait([seg(0), seg(12), seg(15)])
-      .timeout(const Duration(seconds: 60), onTimeout: () {
-    stdout.writeln('CONCURRENT TIMEOUT after 60s');
-    return [];
-  });
-  stdout.writeln('concurrent total ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s');
+  await Future.wait([seg(0), seg(12), seg(15)]).timeout(
+    const Duration(seconds: 60),
+    onTimeout: () {
+      stdout.writeln('CONCURRENT TIMEOUT after 60s');
+      return [];
+    },
+  );
+  stdout.writeln(
+    'concurrent total ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s',
+  );
 
   await proxy.stop();
 }

@@ -66,16 +66,27 @@ class PlayerScreen extends HookConsumerWidget {
       StreamSubscription<void>? tracksSub;
       StreamSubscription<String?>? cuesSub;
 
-      DebugLog.log('PLAYER', 'open hash=$hash file=$fileIndex autoPlay=$autoPlay');
+      DebugLog.log(
+        'PLAYER',
+        'open hash=$hash file=$fileIndex autoPlay=$autoPlay',
+      );
 
       Future(() async {
         try {
           // In-app playback goes through live HLS, which exists only once the
           // file is finished + on S3. While still downloading, the web player
           // can't read the partial file — the user opens the VLC copy-link instead.
-          final status = await ref.read(apiClientProvider).streamStatus(hash,
-              fileIndex: fileIndex, cancelToken: cancelToken);
-          DebugLog.log('PLAYER', 'streamStatus mode=${status.mode} url=${status.url}');
+          final status = await ref
+              .read(apiClientProvider)
+              .streamStatus(
+                hash,
+                fileIndex: fileIndex,
+                cancelToken: cancelToken,
+              );
+          DebugLog.log(
+            'PLAYER',
+            'streamStatus mode=${status.mode} url=${status.url}',
+          );
           if (status.mode != 's3') {
             if (!cancelled) downloading.value = true;
             return;
@@ -85,8 +96,11 @@ class PlayerScreen extends HookConsumerWidget {
           DebugLog.log('PLAYER', 'init HLS master $url');
           vc = VideoPlayerController.networkUrl(Uri.parse(url));
           await vc!.initialize();
-          DebugLog.log('PLAYER', 'initialized size=${vc!.value.size} '
-              'duration=${vc!.value.duration}');
+          DebugLog.log(
+            'PLAYER',
+            'initialized size=${vc!.value.size} '
+                'duration=${vc!.value.duration}',
+          );
           cc = ChewieController(
             videoPlayerController: vc!,
             autoPlay: autoPlay,
@@ -122,8 +136,11 @@ class PlayerScreen extends HookConsumerWidget {
               final id = vc!.playerId;
               // SubtitleTrack.id is the stringified hls.js track index; -1 = off.
               final order = track == null ? -1 : int.parse(track.id);
-              DebugLog.log('ACTION', 'subtitle track → $order '
-                  '(${track?.label ?? 'off'})');
+              DebugLog.log(
+                'ACTION',
+                'subtitle track → $order '
+                    '(${track?.label ?? 'off'})',
+              );
               VideoPlayerPluginHls.instance?.setSubtitleTrack(id, order);
             },
             onAudioTrackChanged: (track) {
@@ -136,10 +153,16 @@ class PlayerScreen extends HookConsumerWidget {
               // ignore: invalid_use_of_visible_for_testing_member
               final id = vc!.playerId;
               final pos = vc!.value.position.inMilliseconds / 1000.0;
-              final newUrl = api.hlsMasterUrl(hash,
-                  fileIndex: fileIndex, audioOrder: order);
-              DebugLog.log('ACTION', 'audio track → $order (${track.label}) '
-                  'reload @${pos.toStringAsFixed(1)}s $newUrl');
+              final newUrl = api.hlsMasterUrl(
+                hash,
+                fileIndex: fileIndex,
+                audioOrder: order,
+              );
+              DebugLog.log(
+                'ACTION',
+                'audio track → $order (${track.label}) '
+                    'reload @${pos.toStringAsFixed(1)}s $newUrl',
+              );
               VideoPlayerPluginHls.instance?.switchHlsSource(id, newUrl, pos);
             },
           );
@@ -160,8 +183,9 @@ class PlayerScreen extends HookConsumerWidget {
             }
 
             applyTracks();
-            tracksSub =
-                hls.subtitleTracksChanged(id).listen((_) => applyTracks());
+            tracksSub = hls
+                .subtitleTracksChanged(id)
+                .listen((_) => applyTracks());
             cuesSub = hls
                 .subtitleCues(id)
                 .listen((text) => cc!.setLiveSubtitle(text));
@@ -169,24 +193,26 @@ class PlayerScreen extends HookConsumerWidget {
 
           // Audio tracks come from the backend (the muxed manifest has no
           // hls.js audio renditions). Switching reloads the master in place.
-          final tracks = await api.audioTracks(hash,
-              fileIndex: fileIndex, cancelToken: cancelToken);
+          final tracks = await api.audioTracks(
+            hash,
+            fileIndex: fileIndex,
+            cancelToken: cancelToken,
+          );
           DebugLog.log('PLAYER', 'audioTracks ${tracks.length}');
           if (tracks.isNotEmpty) {
-            final def = tracks.firstWhere((t) => t.isDefault,
-                orElse: () => tracks.first);
-            cc!.setAudioTracks(
-              [
-                for (final t in tracks)
-                  AudioTrack(
-                    id: t.order.toString(),
-                    label: t.label,
-                    language: t.language,
-                    isDefault: t.isDefault,
-                  ),
-              ],
-              activeId: def.order.toString(),
+            final def = tracks.firstWhere(
+              (t) => t.isDefault,
+              orElse: () => tracks.first,
             );
+            cc!.setAudioTracks([
+              for (final t in tracks)
+                AudioTrack(
+                  id: t.order.toString(),
+                  label: t.label,
+                  language: t.language,
+                  isDefault: t.isDefault,
+                ),
+            ], activeId: def.order.toString());
           }
           if (cancelled) {
             tracksSub?.cancel();
@@ -211,8 +237,10 @@ class PlayerScreen extends HookConsumerWidget {
       });
 
       return () {
-        DebugLog.log('PLAYER',
-            'dispose hash=$hash file=$fileIndex — cancel requests + teardown');
+        DebugLog.log(
+          'PLAYER',
+          'dispose hash=$hash file=$fileIndex — cancel requests + teardown',
+        );
         cancelled = true;
         cancelToken.cancel('player reload');
         tracksSub?.cancel();
@@ -236,13 +264,18 @@ class PlayerScreen extends HookConsumerWidget {
         final v = vc.value;
         if (v.isPlaying != lastPlaying) {
           lastPlaying = v.isPlaying;
-          DebugLog.log('ACTION',
-              '${v.isPlaying ? 'play' : 'pause'} @${v.position.inMilliseconds / 1000.0}s');
+          DebugLog.log(
+            'ACTION',
+            '${v.isPlaying ? 'play' : 'pause'} @${v.position.inMilliseconds / 1000.0}s',
+          );
         }
         final jump = (v.position - lastPos).inMilliseconds;
         if (jump.abs() > 1000) {
-          DebugLog.log('ACTION', 'seek ${lastPos.inMilliseconds / 1000.0}s → '
-              '${v.position.inMilliseconds / 1000.0}s');
+          DebugLog.log(
+            'ACTION',
+            'seek ${lastPos.inMilliseconds / 1000.0}s → '
+                '${v.position.inMilliseconds / 1000.0}s',
+          );
         }
         lastPos = v.position;
       }
@@ -292,7 +325,8 @@ class PlayerScreen extends HookConsumerWidget {
 
     final library = ref.watch(libraryProvider);
     // The episode's own name when one was picked; otherwise the torrent's.
-    final heading = title ??
+    final heading =
+        title ??
         library.asData?.value
             .firstWhere(
               (t) => t.hashString.toLowerCase() == hash.toLowerCase(),

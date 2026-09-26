@@ -31,8 +31,9 @@ const _contentTypes = {
 /// the torrent has no recognisable video). A single-video torrent yields one
 /// entry; a season pack yields one per episode — all of which must reach S3
 /// before the local copy may be freed.
-List<TorrentFile> _videoFiles(List<TorrentFile> files) =>
-    [for (final i in videoFileIndices(files)) files[i]];
+List<TorrentFile> _videoFiles(List<TorrentFile> files) => [
+  for (final i in videoFileIndices(files)) files[i],
+];
 
 String _contentTypeFor(String name) {
   final lower = name.toLowerCase();
@@ -113,7 +114,10 @@ Router buildApiRouter({
   // uploaded would lose them outright. Files go one at a time — fPutObject
   // streams from disk, so serial keeps memory flat even on a small box.
   Future<void> uploadToS3(
-      String hash, TorrentStreamInfo info, List<TorrentFile> files) async {
+    String hash,
+    TorrentStreamInfo info,
+    List<TorrentFile> files,
+  ) async {
     if (!uploading.add(hash)) return;
     final total = files.fold<int>(0, (sum, f) => sum + f.length);
     var done = 0;
@@ -121,17 +125,24 @@ Router buildApiRouter({
     try {
       for (final file in files) {
         final base = done;
-        await signer.putFile(file.name, '${info.downloadDir}/${file.name}',
-            onProgress: (sent) {
-          if (total > 0) uploadProgress[hash] = (base + sent) / total;
-        });
-        s3Files.add(file.name); // playable now, without waiting for its siblings
+        await signer.putFile(
+          file.name,
+          '${info.downloadDir}/${file.name}',
+          onProgress: (sent) {
+            if (total > 0) uploadProgress[hash] = (base + sent) / total;
+          },
+        );
+        s3Files.add(
+          file.name,
+        ); // playable now, without waiting for its siblings
         done += file.length;
         Log.d('s3', 'uploaded ${file.name}');
       }
       s3Ready.add(hash); // we did the uploads — no need to HEAD to confirm them
       uploadProgress.remove(hash);
-      unawaited(finalizeToS3(hash, info)); // only now is the local copy redundant
+      unawaited(
+        finalizeToS3(hash, info),
+      ); // only now is the local copy redundant
     } catch (e) {
       uploading.remove(hash); // failed — retry on the next add / restart / poll
       uploadProgress.remove(hash);
@@ -183,9 +194,11 @@ Router buildApiRouter({
     }
     if (lost > 0) {
       stranded[s.hashString] = lost;
-      Log.w('s3',
-          '${s.hashString}: $lost of ${videos.length} files are on neither S3 '
-          'nor disk — re-download to recover');
+      Log.w(
+        's3',
+        '${s.hashString}: $lost of ${videos.length} files are on neither S3 '
+            'nor disk — re-download to recover',
+      );
     }
     if (uploadable.isNotEmpty) {
       unawaited(uploadToS3(s.hashString, info, uploadable));
@@ -262,28 +275,36 @@ Router buildApiRouter({
   r.get('/search', (Request req) async {
     final q = req.url.queryParameters['q'] ?? '';
     if (q.trim().isEmpty) return _json({'error': 'missing q'}, 400);
-    final results = await tracker.search(q, type: req.url.queryParameters['type']);
+    final results = await tracker.search(
+      q,
+      type: req.url.queryParameters['type'],
+    );
     return _json(results.map((e) => e.toJson()).toList());
   });
 
   // Raw .torrent bytes (mostly internal/debug).
   r.get('/torrent/<hash>', (Request req, String hash) async {
     final bytes = await tracker.fetchTorrent(hash);
-    return Response.ok(bytes, headers: {'Content-Type': 'application/x-bittorrent'});
+    return Response.ok(
+      bytes,
+      headers: {'Content-Type': 'application/x-bittorrent'},
+    );
   });
 
   // Library: live torrent state. `onS3` — whether the video file has landed on
   // S3 — is the gate the frontend uses for in-app playback, Cast and download.
   r.get('/torrents', (Request req) async {
     final states = await client.list();
-    final annotated = await Future.wait(states.map((s) async {
-      final onS3 = await resolveS3(s);
-      return s.copyWith(
-        onS3: onS3,
-        uploadProgress: uploadProgress[s.hashString] ?? 0,
-        strandedFiles: stranded[s.hashString] ?? 0,
-      );
-    }));
+    final annotated = await Future.wait(
+      states.map((s) async {
+        final onS3 = await resolveS3(s);
+        return s.copyWith(
+          onS3: onS3,
+          uploadProgress: uploadProgress[s.hashString] ?? 0,
+          strandedFiles: stranded[s.hashString] ?? 0,
+        );
+      }),
+    );
     return _json(annotated.map((e) => e.toJson()).toList());
   });
 
@@ -305,26 +326,33 @@ Router buildApiRouter({
     final files = <TorrentFileInfo>[];
     for (final i in videoFileIndices(info.files)) {
       final f = info.files[i];
-      files.add(TorrentFileInfo(
-        index: i,
-        name: f.name,
-        length: f.length,
-        bytesCompleted: f.bytesCompleted,
-        onS3: finished && await fileOnS3(f.name),
-      ));
+      files.add(
+        TorrentFileInfo(
+          index: i,
+          name: f.name,
+          length: f.length,
+          bytesCompleted: f.bytesCompleted,
+          onS3: finished && await fileOnS3(f.name),
+        ),
+      );
     }
-    return _json(TorrentFiles(
-      name: info.name,
-      percentDone: info.percentDone,
-      files: files,
-    ).toJson(), 200, 'no-store');
+    return _json(
+      TorrentFiles(
+        name: info.name,
+        percentDone: info.percentDone,
+        files: files,
+      ).toJson(),
+      200,
+      'no-store',
+    );
   });
 
   // Add: fetch the .torrent then add it STARTED (we leech).
   r.post('/torrents', (Request req) async {
     final body = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
     final hash = body['hash'] as String?;
-    if (hash == null || hash.isEmpty) return _json({'error': 'missing hash'}, 400);
+    if (hash == null || hash.isEmpty)
+      return _json({'error': 'missing hash'}, 400);
     final metainfo = await tracker.fetchTorrent(hash);
     await client.addTorrent(metainfo, paused: false);
     stranded.remove(hash); // re-fetching is exactly what un-strands a torrent
@@ -333,7 +361,11 @@ Router buildApiRouter({
   });
 
   // Control: start / stop / remove.
-  r.post('/torrents/<hash>/<action>', (Request req, String hash, String action) async {
+  r.post('/torrents/<hash>/<action>', (
+    Request req,
+    String hash,
+    String action,
+  ) async {
     // Any deliberate action on a torrent may put its files back (a re-verify
     // after copying them in, a restart of a re-fetch) — re-evaluate rather than
     // trusting a verdict reached before the user intervened.
@@ -344,7 +376,10 @@ Router buildApiRouter({
       case 'stop':
         await client.stop(hash);
       case 'remove':
-        await client.remove(hash, deleteData: req.url.queryParameters['deleteData'] == 'true');
+        await client.remove(
+          hash,
+          deleteData: req.url.queryParameters['deleteData'] == 'true',
+        );
       default:
         return _json({'error': 'unknown action'}, 404);
     }
@@ -392,7 +427,11 @@ Router buildApiRouter({
     // both same-origin prod and the cross-origin local dev frontend). The id is
     // carried through verbatim so the local route serves the same file.
     final localUrl = req.requestedUri.replace(path: '/api/file/$id').toString();
-    return _json({'url': localUrl, 'mode': 'local', 'percentDone': info.percentDone});
+    return _json({
+      'url': localUrl,
+      'mode': 'local',
+      'percentDone': info.percentDone,
+    });
   });
 
   // Download: only available once the completed object has landed on S3.
@@ -437,12 +476,16 @@ Router buildApiRouter({
       if (p.existsSync()) return p;
       return null;
     }
+
     var file = _find('$dir/${tf.name}');
     if (file == null && incompleteDir.isNotEmpty) {
       file = _find('$incompleteDir/${tf.name}');
     }
     if (file == null) {
-      return _json({'error': 'file not on disk yet', 'path': '$dir/${tf.name}'}, 404);
+      return _json({
+        'error': 'file not on disk yet',
+        'path': '$dir/${tf.name}',
+      }, 404);
     }
 
     final total = tf.length;
@@ -452,8 +495,11 @@ Router buildApiRouter({
     final contentType = _contentTypeFor(tf.name);
 
     final range = req.headers['range'];
-    Log.d('req', 'file/$id range=${range ?? '(none)'} '
-        'available=$available/$total');
+    Log.d(
+      'req',
+      'file/$id range=${range ?? '(none)'} '
+          'available=$available/$total',
+    );
     // Parsed against `available`, not `total`, so a range can never point past
     // what has actually been downloaded. Shares the proxy's parser rather than
     // reimplementing it — the old inline version mishandled suffix ranges,
@@ -464,20 +510,23 @@ Router buildApiRouter({
     if (range != null) {
       final parsed = S3RangeProxy.parseRange(range, available);
       if (parsed == null) {
-        return Response(416, headers: {
-          'Content-Range': 'bytes */$total',
-          'Accept-Ranges': 'bytes',
-        });
+        return Response(
+          416,
+          headers: {
+            'Content-Range': 'bytes */$total',
+            'Accept-Ranges': 'bytes',
+          },
+        );
       }
       start = parsed.$1;
       end = parsed.$2;
     }
 
     if (available <= 0 || start > end || start >= available) {
-      return Response(416, headers: {
-        'Content-Range': 'bytes */$total',
-        'Accept-Ranges': 'bytes',
-      });
+      return Response(
+        416,
+        headers: {'Content-Range': 'bytes */$total', 'Accept-Ranges': 'bytes'},
+      );
     }
 
     final length = end - start + 1;
@@ -537,29 +586,39 @@ Router buildApiRouter({
           'isDefault': a.isDefault,
           'channels': a.channels,
           'codec': a.codec,
-        }
+        },
     ]);
   });
 
   // Muxed media playlist + init + segments, per audio track `<t>` (= audio
   // order). Each segment carries video (copied) + that audio track (AAC),
   // interleaved by one continuous ffmpeg → A/V stays in sync by construction.
-  r.get('/hls/<id>/m/<t|[0-9]+>/index.m3u8',
-      (Request req, String id, String t) async {
+  r.get('/hls/<id>/m/<t|[0-9]+>/index.m3u8', (
+    Request req,
+    String id,
+    String t,
+  ) async {
     final s = await hls.get(id);
     if (s == null) return _json({'error': 'not ready for HLS'}, 409);
     return _m3u8(HlsPlaylists.muxedMedia(s));
   });
-  r.get('/hls/<id>/m/<t|[0-9]+>/init.mp4',
-      (Request req, String id, String t) async {
+  r.get('/hls/<id>/m/<t|[0-9]+>/init.mp4', (
+    Request req,
+    String id,
+    String t,
+  ) async {
     final s = await hls.get(id);
     if (s == null) return _json({'error': 'not ready for HLS'}, 409);
     final bytes = await segments.muxedInit(s, int.parse(t));
     if (bytes == null) return Response.notFound('no init');
     return _mp4(bytes);
   });
-  r.get('/hls/<id>/m/<t|[0-9]+>/<seg|[0-9]+>.m4s',
-      (Request req, String id, String t, String seg) async {
+  r.get('/hls/<id>/m/<t|[0-9]+>/<seg|[0-9]+>.m4s', (
+    Request req,
+    String id,
+    String t,
+    String seg,
+  ) async {
     final s = await hls.get(id);
     if (s == null) return _json({'error': 'not ready for HLS'}, 409);
     final mux = await segments.muxedSegment(s, int.parse(t), int.parse(seg));
@@ -571,43 +630,63 @@ Router buildApiRouter({
     // Streamed from disk, not buffered: the length is known from the parts'
     // on-disk sizes, so Content-Length stays exact. `mux` owns open file
     // handles which its stream closes — including on client disconnect.
-    return Response.ok(mux.stream(), headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Length': '${mux.total}',
-      'Cache-Control': 'public, max-age=3600',
-    });
+    return Response.ok(
+      mux.stream(),
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Length': '${mux.total}',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    );
   });
 
   // Subtitle media playlist + per-segment WebVTT (windowed ffmpeg seek, cached).
-  r.get('/hls/<id>/s/<t|[0-9]+>/index.m3u8', (Request req, String id, String t) async {
+  r.get('/hls/<id>/s/<t|[0-9]+>/index.m3u8', (
+    Request req,
+    String id,
+    String t,
+  ) async {
     final s = await hls.get(id);
     if (s == null) return _json({'error': 'not ready for HLS'}, 409);
     return _m3u8(HlsPlaylists.subtitleMedia(s));
   });
-  r.get('/hls/<id>/s/<t|[0-9]+>/<seg|[0-9]+>.vtt',
-      (Request req, String id, String t, String seg) async {
+  r.get('/hls/<id>/s/<t|[0-9]+>/<seg|[0-9]+>.vtt', (
+    Request req,
+    String id,
+    String t,
+    String seg,
+  ) async {
     final s = await hls.get(id);
     if (s == null) return _json({'error': 'not ready for HLS'}, 409);
     final vtt = await segments.vttSegment(s, int.parse(t), int.parse(seg));
     if (vtt == null) return Response.notFound('no subtitle');
-    return Response.ok(vtt, headers: {
-      'Content-Type': 'text/vtt; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    });
+    return Response.ok(
+      vtt,
+      headers: {
+        'Content-Type': 'text/vtt; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    );
   });
 
   return r;
 }
 
-Response _m3u8(String body) => Response.ok(body, headers: {
-      'Content-Type': 'application/vnd.apple.mpegurl',
-      'Cache-Control': 'no-cache',
-    });
+Response _m3u8(String body) => Response.ok(
+  body,
+  headers: {
+    'Content-Type': 'application/vnd.apple.mpegurl',
+    'Cache-Control': 'no-cache',
+  },
+);
 
-Response _mp4(List<int> bytes) => Response.ok(bytes, headers: {
-      'Content-Type': 'video/mp4',
-      'Cache-Control': 'public, max-age=3600',
-    });
+Response _mp4(List<int> bytes) => Response.ok(
+  bytes,
+  headers: {
+    'Content-Type': 'video/mp4',
+    'Cache-Control': 'public, max-age=3600',
+  },
+);
 
 /// Streams `[start, end]` (inclusive) of [file] in chunks, **always closing the
 /// underlying handle** — the `finally` runs whether the stream completes or the
@@ -633,10 +712,10 @@ Stream<List<int>> _rangeStream(File file, int start, int end) async* {
 }
 
 Response _json(Object data, [int status = 200, String? cache]) => Response(
-      status,
-      body: jsonEncode(data),
-      headers: {
-        'Content-Type': 'application/json',
-        if (cache != null) 'Cache-Control': cache,
-      },
-    );
+  status,
+  body: jsonEncode(data),
+  headers: {
+    'Content-Type': 'application/json',
+    if (cache != null) 'Cache-Control': cache,
+  },
+);

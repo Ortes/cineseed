@@ -32,26 +32,34 @@ Future<void> main(List<String> args) async {
   }
   final duration =
       cues.durationSeconds ?? probe.duration ?? cues.keyframeTimes.last;
-  final producerBoundaries =
-      HlsSession.computeBoundaries(cues.keyframeTimes, duration, 4);
-  final (boundaries, groupStart) =
-      HlsSession.groupBoundaries(producerBoundaries, 4);
+  final producerBoundaries = HlsSession.computeBoundaries(
+    cues.keyframeTimes,
+    duration,
+    4,
+  );
+  final (boundaries, groupStart) = HlsSession.groupBoundaries(
+    producerBoundaries,
+    4,
+  );
   final s = HlsSession(
-      id: 'probe',
-      url: local,
-      probe: probe,
-      keyframes: cues.keyframeTimes,
-      boundaries: boundaries,
-      producerBoundaries: producerBoundaries,
-      groupStart: groupStart,
-      fileName: 'probe',
-      urlExpiresAt: DateTime.now().add(const Duration(hours: 5)));
+    id: 'probe',
+    url: local,
+    probe: probe,
+    keyframes: cues.keyframeTimes,
+    boundaries: boundaries,
+    producerBoundaries: producerBoundaries,
+    groupStart: groupStart,
+    fileName: 'probe',
+    urlExpiresAt: DateTime.now().add(const Duration(hours: 5)),
+  );
 
   final gen = SegmentGenerator(
     pool: TranscodePool(3),
     producerManager: ProducerManager(
       config: ProducerConfig(
-          ffmpegBin: 'ffmpeg', tempRoot: Directory.systemTemp.path),
+        ffmpegBin: 'ffmpeg',
+        tempRoot: Directory.systemTemp.path,
+      ),
     ),
   );
 
@@ -69,10 +77,12 @@ Future<void> main(List<String> args) async {
       final sw = Stopwatch()..start();
       final vtt = await gen.vttSegment(s, t, i);
       final cueCount = RegExp('-->').allMatches(vtt ?? '').length;
-      print('  s:$t "${sub.label}" seg $i @${s.segStart(i).toStringAsFixed(1)}s '
-          '${(sw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
-          '${vtt?.length ?? 0}B cues=$cueCount '
-          'first=${_firstCue(vtt)} last=${_lastCue(vtt)}');
+      print(
+        '  s:$t "${sub.label}" seg $i @${s.segStart(i).toStringAsFixed(1)}s '
+        '${(sw.elapsedMilliseconds / 1000).toStringAsFixed(2)}s '
+        '${vtt?.length ?? 0}B cues=$cueCount '
+        'first=${_firstCue(vtt)} last=${_lastCue(vtt)}',
+      );
     }
   }
   await proxy.stop();

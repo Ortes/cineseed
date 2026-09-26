@@ -1,4 +1,3 @@
-
 import 'package:cineseed_backend/streaming/hls_playlists.dart';
 import 'package:cineseed_backend/streaming/hls_session.dart';
 import 'package:cineseed_backend/streaming/probe.dart';
@@ -7,30 +6,30 @@ import 'package:cineseed_backend/streaming/segments.dart';
 import 'package:test/test.dart';
 
 HlsSession _sessionWith(List<AudioTrack> audio) => HlsSession(
-      id: 'h',
-      url: 'http://x/y',
-      probe: MediaProbe(
-        video: const VideoTrack(codec: 'hevc', width: 1920, height: 1080),
-        audio: audio,
-        subtitles: const [],
-        duration: 100,
-      ),
-      keyframes: const [0, 6, 12],
-      boundaries: const [0, 6, 12],
-      producerBoundaries: const [0, 6, 12],
-      groupStart: const [0, 1, 2],
-      fileName: 'y',
-      urlExpiresAt: DateTime.now().add(const Duration(hours: 1)),
-    );
+  id: 'h',
+  url: 'http://x/y',
+  probe: MediaProbe(
+    video: const VideoTrack(codec: 'hevc', width: 1920, height: 1080),
+    audio: audio,
+    subtitles: const [],
+    duration: 100,
+  ),
+  keyframes: const [0, 6, 12],
+  boundaries: const [0, 6, 12],
+  producerBoundaries: const [0, 6, 12],
+  groupStart: const [0, 1, 2],
+  fileName: 'y',
+  urlExpiresAt: DateTime.now().add(const Duration(hours: 1)),
+);
 
 AudioTrack _audio(int order, {bool isDefault = false}) => AudioTrack(
-      order: order,
-      codec: 'aac',
-      channels: 2,
-      sampleRate: 48000,
-      language: 'en',
-      isDefault: isDefault,
-    );
+  order: order,
+  codec: 'aac',
+  channels: 2,
+  sampleRate: 48000,
+  language: 'en',
+  isDefault: isDefault,
+);
 
 void main() {
   group('HlsPlaylists.master audio selection', () {
@@ -47,8 +46,10 @@ void main() {
 
     test('falls back to the default for an out-of-range audioOrder', () {
       final s = _sessionWith([_audio(0, isDefault: true), _audio(1)]);
-      expect(HlsPlaylists.master(s, audioOrder: 99),
-          contains('m/0/index.m3u8'));
+      expect(
+        HlsPlaylists.master(s, audioOrder: 99),
+        contains('m/0/index.m3u8'),
+      );
     });
   });
 
@@ -145,7 +146,6 @@ void main() {
     });
   });
 
-
   group('S3RangeProxy.parseRange', () {
     test('open-ended range clamps to EOF', () {
       expect(S3RangeProxy.parseRange('bytes=100-', 1000), (100, 999));
@@ -173,7 +173,8 @@ void main() {
   group('SegmentGenerator.trimPartialCue', () {
     // One complete cue, then a second block cut at every offset — whatever the
     // wall-clock kill lands on must still parse as WebVTT.
-    const full = 'WEBVTT\n\n'
+    const full =
+        'WEBVTT\n\n'
         '05:00.466 --> 05:01.795\n<i>End of manifest.</i>\n\n'
         '05:04.899 --> 05:09.705\nI can\'t be\nthe only person here.\n';
 
@@ -184,14 +185,20 @@ void main() {
     test('drops a cue cut mid-block, keeping the complete ones', () {
       for (var cut = full.indexOf('05:04'); cut < full.length; cut++) {
         final trimmed = SegmentGenerator.trimPartialCue(full.substring(0, cut));
-        expect(trimmed, startsWith('WEBVTT\n\n05:00.466 --> 05:01.795\n'),
-            reason: 'cut at $cut');
+        expect(
+          trimmed,
+          startsWith('WEBVTT\n\n05:00.466 --> 05:01.795\n'),
+          reason: 'cut at $cut',
+        );
         // Either the partial block is gone, or it is a whole cue: a timing
         // line plus at least one complete text line.
         final blocks = trimmed.split('\n\n');
         for (final b in blocks.skip(1).where((b) => b.isNotEmpty)) {
-          expect(b, matches(RegExp(r'-->[^\n]*\n(?:[^\n]+\n?)+$')),
-              reason: 'cut at $cut');
+          expect(
+            b,
+            matches(RegExp(r'-->[^\n]*\n(?:[^\n]+\n?)+$')),
+            reason: 'cut at $cut',
+          );
         }
       }
     });

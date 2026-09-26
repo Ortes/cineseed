@@ -82,22 +82,25 @@ void main() {
         config: c,
       );
 
-  test('serves produced segments and waits for not-yet-produced ones', () async {
-    final p = await startAt(0, cfg());
-    addTearDown(p.kill);
+  test(
+    'serves produced segments and waits for not-yet-produced ones',
+    () async {
+      final p = await startAt(0, cfg());
+      addTearDown(p.kill);
 
-    final s0 = await p.awaitSegment(0);
-    expect(s0, isNotNull);
-    expect(await drain(s0!), 'seg0');
+      final s0 = await p.awaitSegment(0);
+      expect(s0, isNotNull);
+      expect(await drain(s0!), 'seg0');
 
-    // Segment 5 is written ~100ms in; awaitSegment must block then resolve.
-    final s5 = await p.awaitSegment(5);
-    expect(s5, isNotNull);
-    expect(await drain(s5!), 'seg5');
+      // Segment 5 is written ~100ms in; awaitSegment must block then resolve.
+      final s5 = await p.awaitSegment(5);
+      expect(s5, isNotNull);
+      expect(await drain(s5!), 'seg5');
 
-    expect(p.highWater, greaterThanOrEqualTo(5));
-    expect(p.isAlive, isTrue);
-  });
+      expect(p.highWater, greaterThanOrEqualTo(5));
+      expect(p.isAlive, isTrue);
+    },
+  );
 
   test('canServe reflects start segment and production frontier', () async {
     final p = await startAt(2, cfg());
@@ -109,27 +112,33 @@ void main() {
     expect(p.canServe(p.highWater + 100), isFalse);
   });
 
-  test('prunes consumed segments behind the client and raises the floor',
-      () async {
-    // retain 2 behind the playhead: with segs 0..5 on disk and the client at 5,
-    // pruneBelow = 5 - 2 = 3, so 0/1/2 are deleted and the floor moves to 3.
-    final p = await startAt(0, cfg(retain: 2));
-    addTearDown(p.kill);
-    await p.awaitSegment(5); // all six produced, highWater >= 5
-    final dir = p.tempPath;
-    expect(File('$dir/0.m4s').existsSync(), isTrue);
+  test(
+    'prunes consumed segments behind the client and raises the floor',
+    () async {
+      // retain 2 behind the playhead: with segs 0..5 on disk and the client at 5,
+      // pruneBelow = 5 - 2 = 3, so 0/1/2 are deleted and the floor moves to 3.
+      final p = await startAt(0, cfg(retain: 2));
+      addTearDown(p.kill);
+      await p.awaitSegment(5); // all six produced, highWater >= 5
+      final dir = p.tempPath;
+      expect(File('$dir/0.m4s').existsSync(), isTrue);
 
-    p.noteRequest(5); // advance the playhead
-    // Wait for a scan tick to run the sliding-window cleanup.
-    await Future.delayed(const Duration(milliseconds: 120));
+      p.noteRequest(5); // advance the playhead
+      // Wait for a scan tick to run the sliding-window cleanup.
+      await Future.delayed(const Duration(milliseconds: 120));
 
-    expect(File('$dir/2.m4s').existsSync(), isFalse, reason: 'pruned below floor');
-    expect(File('$dir/0.m4s').existsSync(), isFalse);
-    expect(File('$dir/3.m4s').existsSync(), isTrue, reason: 'kept: at floor');
-    expect(p.canServe(2), isFalse, reason: 'below floor → needs restart');
-    expect(p.canServe(3), isTrue);
-    expect(p.canServe(5), isTrue);
-  });
+      expect(
+        File('$dir/2.m4s').existsSync(),
+        isFalse,
+        reason: 'pruned below floor',
+      );
+      expect(File('$dir/0.m4s').existsSync(), isFalse);
+      expect(File('$dir/3.m4s').existsSync(), isTrue, reason: 'kept: at floor');
+      expect(p.canServe(2), isFalse, reason: 'below floor → needs restart');
+      expect(p.canServe(3), isTrue);
+      expect(p.canServe(5), isTrue);
+    },
+  );
 
   test('out-of-range and below-start segments return null', () async {
     final p = await startAt(3, cfg());
@@ -148,14 +157,16 @@ void main() {
     expect(Directory(dir).existsSync(), isFalse);
   });
 
-  test('goes idle and self-kills after the idle delay with no requests', () async {
-    final p =
-        await startAt(0, cfg(idle: const Duration(milliseconds: 200)));
-    addTearDown(p.kill);
-    p.retain();
-    await p.awaitSegment(0);
-    p.release(); // refCount → 0, idle timer starts
-    await Future.delayed(const Duration(milliseconds: 500));
-    expect(p.isAlive, isFalse);
-  });
+  test(
+    'goes idle and self-kills after the idle delay with no requests',
+    () async {
+      final p = await startAt(0, cfg(idle: const Duration(milliseconds: 200)));
+      addTearDown(p.kill);
+      p.retain();
+      await p.awaitSegment(0);
+      p.release(); // refCount → 0, idle timer starts
+      await Future.delayed(const Duration(milliseconds: 500));
+      expect(p.isAlive, isFalse);
+    },
+  );
 }

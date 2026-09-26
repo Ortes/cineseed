@@ -43,12 +43,7 @@ class LibraryScreen extends StatelessWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            _LibraryTab(),
-            SearchView(),
-          ],
-        ),
+        body: const TabBarView(children: [_LibraryTab(), SearchView()]),
       ),
     );
   }
@@ -72,8 +67,10 @@ class _LibraryTab extends HookConsumerWidget {
             controller: filterController,
             decoration: InputDecoration(
               hintText: 'Filter library…',
-              prefixIcon: const Icon(Icons.search_rounded,
-                  color: CineseedColors.creamMuted),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: CineseedColors.creamMuted,
+              ),
               isDense: true,
               suffixIcon: ValueListenableBuilder<TextEditingValue>(
                 valueListenable: filterController,
@@ -115,9 +112,10 @@ class _LibraryTab extends HookConsumerWidget {
               final filtered = filter.value.isEmpty
                   ? torrents
                   : torrents
-                      .where((t) =>
-                          t.name.toLowerCase().contains(filter.value))
-                      .toList();
+                        .where(
+                          (t) => t.name.toLowerCase().contains(filter.value),
+                        )
+                        .toList();
               if (filtered.isEmpty) {
                 return const _EmptyState(
                   icon: Icons.search_off_rounded,
@@ -137,7 +135,8 @@ class _LibraryTab extends HookConsumerWidget {
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                       itemCount: filtered.length,
                       itemBuilder: (context, i) => _TorrentTile(
-                          torrent: filtered[filtered.length - 1 - i]),
+                        torrent: filtered[filtered.length - 1 - i],
+                      ),
                     ),
                   ),
                 ],
@@ -222,7 +221,9 @@ class _TotalsBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: CineseedColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: CineseedColors.outline.withValues(alpha: 0.6)),
+        border: Border.all(
+          color: CineseedColors.outline.withValues(alpha: 0.6),
+        ),
       ),
       child: Wrap(
         spacing: 20,
@@ -383,13 +384,13 @@ class _TorrentTile extends ConsumerWidget {
     final finalizing = t.isReady && !t.onS3 && !stranded;
     final statusText = stranded
         ? '${t.strandedFiles} file${t.strandedFiles == 1 ? '' : 's'} missing  ·  '
-            're-download to recover'
+              're-download to recover'
         : t.onS3
-            ? 'Ready to stream'
-            : finalizing
-                ? 'Uploading to S3…  ${(t.uploadProgress * 100).toStringAsFixed(0)} %'
-                : '${(t.percentDone * 100).toStringAsFixed(1)} %  ·  '
-                    '${hasBytes ? 'playable in VLC while downloading' : 'starting…'}';
+        ? 'Ready to stream'
+        : finalizing
+        ? 'Uploading to S3…  ${(t.uploadProgress * 100).toStringAsFixed(0)} %'
+        : '${(t.percentDone * 100).toStringAsFixed(1)} %  ·  '
+              '${hasBytes ? 'playable in VLC while downloading' : 'starting…'}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -447,8 +448,9 @@ class _TorrentTile extends ConsumerWidget {
                           child: LinearProgressIndicator(
                             value: t.percentDone,
                             minHeight: 2,
-                            backgroundColor: CineseedColors.outline
-                                .withValues(alpha: 0.4),
+                            backgroundColor: CineseedColors.outline.withValues(
+                              alpha: 0.4,
+                            ),
                             valueColor: const AlwaysStoppedAnimation(
                               CineseedColors.creamMuted,
                             ),
@@ -459,10 +461,13 @@ class _TorrentTile extends ConsumerWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(99),
                           child: LinearProgressIndicator(
-                            value: t.uploadProgress > 0 ? t.uploadProgress : null,
+                            value: t.uploadProgress > 0
+                                ? t.uploadProgress
+                                : null,
                             minHeight: 2,
-                            backgroundColor: CineseedColors.outline
-                                .withValues(alpha: 0.4),
+                            backgroundColor: CineseedColors.outline.withValues(
+                              alpha: 0.4,
+                            ),
                             valueColor: const AlwaysStoppedAnimation(
                               CineseedColors.primaryBright,
                             ),
@@ -500,7 +505,8 @@ class _TorrentTile extends ConsumerWidget {
                   // stays available throughout. (No index-at-end pain like
                   // Chrome's <video>.)
                   Tooltip(
-                    message: 'Copy stream URL — then in VLC: '
+                    message:
+                        'Copy stream URL — then in VLC: '
                         '⌘N (Open Network), paste, Open',
                     child: IconButton(
                       icon: const Icon(Icons.content_copy_rounded, size: 18),
@@ -515,8 +521,8 @@ class _TorrentTile extends ConsumerWidget {
                     tooltip: t.onS3
                         ? 'Download'
                         : finalizing
-                            ? 'Available once the upload to S3 finishes'
-                            : 'Available once the download finishes',
+                        ? 'Available once the upload to S3 finishes'
+                        : 'Available once the download finishes',
                     icon: const Icon(Icons.download_rounded, size: 20),
                     color: CineseedColors.creamMuted,
                     onPressed: t.onS3
@@ -529,8 +535,8 @@ class _TorrentTile extends ConsumerWidget {
                     tooltip: t.onS3
                         ? 'Play in browser'
                         : finalizing
-                            ? 'Available once the upload to S3 finishes'
-                            : 'Available once on S3 — use the copy button for VLC',
+                        ? 'Available once the upload to S3 finishes'
+                        : 'Available once on S3 — use the copy button for VLC',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
                     color: t.onS3
                         ? CineseedColors.cream
