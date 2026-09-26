@@ -35,8 +35,9 @@ the top of `build` — no `AutomaticKeepAliveClientMixin` shell needed.
 
 ## Workflow
 
-One branch + PR per change; CI (`.github/workflows/ci.yml`) must pass before merging to
-`main`. No worktrees. The repo is a pub workspace: run `flutter pub get` at the root.
+Work directly on `main` — commit and push straight to it. No worktrees, no feature
+branches, no PRs for this project. CI (`.github/workflows/ci.yml`) runs on every push.
+The repo is a pub workspace: run `flutter pub get` at the root.
 
 ## Testing the frontend
 
