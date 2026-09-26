@@ -1,0 +1,64 @@
+# Server-side compose: lives in the compose project dir on the host (see
+# REMOTE in deploy/deploy.env). The deploy script (deploy/deploy.sh) rsyncs
+# this file, the Caddyfile, and .env there before bringing services up.
+#
+# If the image is private, the server needs `docker login` once with a PAT
+# that has pull (read:packages) scope.
+#
+# network_mode=host so the backend reaches Transmission on localhost and any
+# host mount (e.g. an rclone FUSE mount) has the same path inside and outside
+# the container. PORT comes from .env (defaults to 8080).
+#
+# The /mnt/torrents and /mnt/downloads bind mounts below match the reference
+# host layout (DOWNLOAD_DIR / INCOMPLETE_DIR in .env) — adjust to yours.
+
+services:
+  cineseed:
+    image: ghcr.io/ortes/cineseed:latest # or your own registry image
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    volumes:
+      - /mnt/torrents:/mnt/torrents
+      - /mnt/downloads:/mnt/downloads
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host
+    # .env provides CINESEED_DOMAIN, which the Caddyfile reads.
+    env_file: .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Transmission stays on the default bridge network: RPC is only reachable
+  # from the host (the backend runs with network_mode=host), and the peer
+  # port 51413 MUST be published tcp+udp — without it the client is not
+  # connectable and seeding upload stays near zero.
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission-daemon
+    restart: unless-stopped
+    environment:
+      - PUID=0
+      - PGID=0
+      - TZ=${TZ:-Etc/UTC}
+    ports:
+      # RPC port — must match rpc-port in Transmission's settings.json and
+      # TRANSMISSION_URL in .env.
+      - "127.0.0.1:9092:9092"
+      - "51413:51413"
+      - "51413:51413/udp"
+    volumes:
+      - /var/lib/transmission-daemon/.config/transmission-daemon:/config
+      # rshared: a FUSE mount (e.g. rclone) may appear/restart after this
+      # container starts (no systemd ordering under compose) — propagation
+      # keeps it visible.
+      - /mnt/torrents:/mnt/torrents:rshared
+      - /mnt/downloads:/mnt/downloads
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,11 @@
+import 'package:cineseed_shared/cineseed_shared.dart';
+
+/// Abstract tracker. [TorznabTracker] is the built-in implementation; any
+/// other source can implement this without touching the rest of the app.
+abstract interface class TrackerConnector {
+  /// Full-text search → list of results carrying the `infoHash`.
+  Future<List<TorrentResult>> search(String query, {String? type});
+
+  /// Fetch the raw `.torrent` bytes for an infoHash (Torznab `t=get`).
+  Future<List<int>> fetchTorrent(String infoHash);
+}

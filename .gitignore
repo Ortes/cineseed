@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────
+# Secrets / local config — NEVER COMMIT (repo is public)
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+# Personal ops files (kept in a separate private repo cloned at private/)
+private/
+CLAUDE.local.md
+.claude/
+deploy/deploy.env
+*.key
+*.pem
+*.p12
+*.pfx
+config/secrets*
+**/secrets.dart
+*.credentials
+
+# ─────────────────────────────────────────────────────────────
+# Dart / Flutter
+# ─────────────────────────────────────────────────────────────
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-versions
+.last_build_id
+doc/api/
+coverage/
+*.dart.js
+*.info.json
+*.symbols
+app.*.map.json
+
+# Generated code (project uses no codegen, but guard anyway)
+**/*.g.dart
+**/*.freezed.dart
+**/*.mocks.dart
+
+# ─────────────────────────────────────────────────────────────
+# Compiled backend binary (built in Docker, shipped to server)
+# ─────────────────────────────────────────────────────────────
+/out/
+cineseed-server
+*.exe
+*.aot
+*.dill
+
+# ─────────────────────────────────────────────────────────────
+# Flutter web build copied into the backend (generated in CI)
+# ─────────────────────────────────────────────────────────────
+backend/public/*
+!backend/public/.gitkeep
+
+# ─────────────────────────────────────────────────────────────
+# Test media / torrents (local only — never tracked)
+# ─────────────────────────────────────────────────────────────
+*.torrent
+*.mkv
+*.mp4
+*.mov
+*.avi
+*.webm
+*.mka
+*.srt
+
+# ─────────────────────────────────────────────────────────────
+# OS / Editor / IDE
+# ─────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+*~
+*.log

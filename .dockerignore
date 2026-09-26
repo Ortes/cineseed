@@ -1,0 +1,54 @@
+# Keep the build context small and free of host-only or secret material.
+# Anything listed here is invisible to `docker build`.
+
+# Git / VCS
+.git
+.gitignore
+.gitattributes
+
+# Secrets — never enter the image
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+**/secrets.dart
+*.credentials
+
+# Dart / Flutter artifacts (rebuilt inside the container)
+.dart_tool/
+**/.dart_tool/
+.packages
+**/.packages
+.flutter-plugins
+**/.flutter-plugins
+.flutter-plugins-dependencies
+**/.flutter-plugins-dependencies
+.last_build_id
+**/.last_build_id
+build/
+**/build/
+backend/public/
+out/
+
+# Pre-compiled binaries from the old systemd flow
+cineseed-server
+*.exe
+*.aot
+*.dill
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Docs & misc
+docs/
+*.log
+README.md
+CLAUDE.md

@@ -1,0 +1,7 @@
+name: cineseed_shared
+description: Shared models for Cineseed (used by both backend and frontend).
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"

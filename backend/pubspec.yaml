@@ -1,0 +1,27 @@
+name: cineseed_backend
+description: Cineseed backend — shelf server that proxies Torznab + Transmission and signs S3 URLs.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  cineseed_shared:
+    path: ../shared
+  http: ^1.6.0
+  # Pinned to a fork that fixes + encoding in S3 canonical path (upstream PR:
+  # https://github.com/xtyxtyx/minio-dart/pull/114). Revert to `minio: ^3.5.x`
+  # once a fixed version is published on pub.dev.
+  minio:
+    git:
+      url: https://github.com/Ortes/minio-dart.git
+      ref: 909a18f38e8b6ef3bfa801d8253a2df7238b4172
+  shelf: ^1.4.2
+  shelf_cors_headers: ^0.1.5
+  shelf_router: ^1.1.4
+  shelf_static: ^1.1.3
+  xml: ^6.6.1
+
+dev_dependencies:
+  test: ^1.24.0
