@@ -16,12 +16,19 @@ class SuggestionsView extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     useAutomaticKeepAlive(); // survive TabBarView switches (keeps the order)
     final sort = useState(SuggestionSort.recommended);
+    final ratedOnly = useState(false);
     final films = ref.watch(suggestionsProvider).value;
     final sorted = useMemoized(
       () => films == null
           ? null
-          : sortSuggestions(films, sort.value, DateTime.now()),
-      [films, sort.value],
+          : sortSuggestions(
+              ratedOnly.value
+                  ? films.where((s) => s.movie.rating != null).toList()
+                  : films,
+              sort.value,
+              DateTime.now(),
+            ),
+      [films, sort.value, ratedOnly.value],
     );
     final theme = Theme.of(context);
 
@@ -47,25 +54,38 @@ class SuggestionsView extends HookConsumerWidget {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      SegmentedButton<SuggestionSort>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment(
-                            value: SuggestionSort.recommended,
-                            label: Text('Recommended'),
-                            tooltip: 'Rating and release date together',
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          FilterChip(
+                            label: const Text('Rated only'),
+                            tooltip: 'Hide films nobody has rated on TMDB yet',
+                            selected: ratedOnly.value,
+                            onSelected: (v) => ratedOnly.value = v,
                           ),
-                          ButtonSegment(
-                            value: SuggestionSort.rating,
-                            label: Text('Rating'),
-                          ),
-                          ButtonSegment(
-                            value: SuggestionSort.releaseDate,
-                            label: Text('Latest'),
+                          SegmentedButton<SuggestionSort>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(
+                                value: SuggestionSort.recommended,
+                                label: Text('Recommended'),
+                                tooltip: 'Rating and release date together',
+                              ),
+                              ButtonSegment(
+                                value: SuggestionSort.rating,
+                                label: Text('Rating'),
+                              ),
+                              ButtonSegment(
+                                value: SuggestionSort.releaseDate,
+                                label: Text('Latest'),
+                              ),
+                            ],
+                            selected: {sort.value},
+                            onSelectionChanged: (s) => sort.value = s.single,
                           ),
                         ],
-                        selected: {sort.value},
-                        onSelectionChanged: (s) => sort.value = s.single,
                       ),
                     ],
                   ),

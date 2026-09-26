@@ -8,8 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Added
 - Suggestions tab (C411 only): this year's films on C411 (last year's too from January to
   March), sorted by rating, release date, or both ("Recommended"), each linked to
-  AlloCiné (`GET /api/suggestions`, rebuilt daily). Film cards show the TMDB rating and
-  vote count.
+  AlloCiné (`GET /api/suggestions`, rebuilt daily), with a "Rated only" filter. Film
+  cards show the TMDB rating and vote count.
 - SQLite database in `CINESEED_DATA_DIR` (`cineseed.db`), so the suggestions survive a
   restart. The image is now built with `dart build cli` (SQLite ships in
   `/opt/cineseed/lib`); the entrypoint moved to `/opt/cineseed/bin/server`.
