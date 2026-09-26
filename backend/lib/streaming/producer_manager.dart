@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../log.dart';
+import '../src/log.dart';
 import 'segment_producer.dart';
 import 'segment_ref.dart';
 

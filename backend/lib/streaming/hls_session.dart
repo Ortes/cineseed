@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import '../log.dart';
-import '../storage/s3_signer.dart';
-import '../torrent/stream_id.dart';
-import '../torrent/torrent_client.dart';
+import '../src/log.dart';
+import '../src/storage/s3_signer.dart';
+import '../src/torrent/stream_id.dart';
+import '../src/torrent/torrent_client.dart';
 import 'mkv_cues.dart';
 import 'probe.dart';
 import 's3_range_proxy.dart';

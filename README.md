@@ -77,6 +77,29 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks CI runs.
 Everything is environment variables — see [.env.example](.env.example), which documents
 each knob including the HLS/S3 latency tuning. Secrets are never committed.
 
+## Extending
+
+The backend is also a library (`package:cineseed_backend`). Every dependency of
+`startServer` defaults to what `.env` describes, and any of them can be swapped (another
+torrent client, indexer or storage) without forking:
+
+```yaml
+dependencies:
+  cineseed_backend:
+    git: {url: https://github.com/Ortes/cineseed.git, path: backend, ref: <tag>}
+```
+
+```dart
+import 'package:cineseed_backend/cineseed_backend.dart';
+
+Future<void> main() async {
+  final server = await startServer(Config.fromEnv(loadDotenv()),
+      client: MyQbittorrentClient()); // implements TorrentClient
+}
+```
+
+`TorrentClient` and `TrackerConnector` are the extension points.
+
 ## Deployment
 
 A single Docker image contains the compiled backend and the Flutter web build

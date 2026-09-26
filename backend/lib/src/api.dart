@@ -8,10 +8,10 @@ import 'package:shelf_router/shelf_router.dart';
 
 import 'log.dart';
 import 'storage/s3_signer.dart';
-import 'streaming/hls_playlists.dart';
-import 'streaming/hls_session.dart';
-import 'streaming/s3_range_proxy.dart';
-import 'streaming/segments.dart';
+import '../streaming/hls_playlists.dart';
+import '../streaming/hls_session.dart';
+import '../streaming/s3_range_proxy.dart';
+import '../streaming/segments.dart';
 import 'torrent/stream_id.dart';
 import 'torrent/torrent_client.dart';
 import 'tracker/tmdb_client.dart';
@@ -43,8 +43,9 @@ String _contentTypeFor(String name) {
   return 'application/octet-stream';
 }
 
-/// All `/api/*` routes. Mounted under `/api` by the server.
-Router buildApiRouter({
+/// All `/api/*` routes. Mounted under `/api` by the server. [dispose] stops
+/// the background S3 sweep so a closed server leaves no timer behind.
+({Router router, void Function() dispose}) buildApiRouter({
   required TrackerConnector tracker,
   required TorrentClient client,
   required S3Signer signer,
@@ -212,8 +213,10 @@ Router buildApiRouter({
   // upload success latches + finalizes on its own, so no polling is needed to
   // notice the object landed.
   var sweeping = false;
+  var disposed = false;
+  Timer? sweepTimer;
   void ensureSweep() {
-    if (sweeping) return;
+    if (sweeping || disposed) return;
     sweeping = true;
     Future<void> tick() async {
       var downloading = false;
@@ -226,8 +229,8 @@ Router buildApiRouter({
       } catch (e) {
         Log.d('s3', 'sweep failed: $e');
       }
-      if (downloading) {
-        Timer(const Duration(seconds: 1), tick);
+      if (downloading && !disposed) {
+        sweepTimer = Timer(const Duration(seconds: 1), tick);
       } else {
         sweeping = false;
       }
@@ -670,7 +673,13 @@ Router buildApiRouter({
     );
   });
 
-  return r;
+  return (
+    router: r,
+    dispose: () {
+      disposed = true;
+      sweepTimer?.cancel();
+    },
+  );
 }
 
 Response _m3u8(String body) => Response.ok(

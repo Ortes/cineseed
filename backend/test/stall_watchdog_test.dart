@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:cineseed_backend/storage/stall_watchdog.dart';
+import 'package:cineseed_backend/src/storage/stall_watchdog.dart';
 import 'package:test/test.dart';
 
 const _timeout = Duration(milliseconds: 100);

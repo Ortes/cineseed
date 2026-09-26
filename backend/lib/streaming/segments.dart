@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../log.dart';
+import '../src/log.dart';
 import 'hls_session.dart';
 import 'mp4_boxes.dart';
 import 'producer_manager.dart';

@@ -1,5 +1,5 @@
-import 'package:cineseed_backend/torrent/stream_id.dart';
-import 'package:cineseed_backend/torrent/torrent_client.dart';
+import 'package:cineseed_backend/src/torrent/stream_id.dart';
+import 'package:cineseed_backend/src/torrent/torrent_client.dart';
 import 'package:test/test.dart';
 
 const _hash = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';

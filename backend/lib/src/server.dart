@@ -11,41 +11,67 @@ import 'api.dart';
 import 'config.dart';
 import 'log.dart';
 import 'storage/s3_signer.dart';
-import 'streaming/hls_session.dart';
-import 'streaming/producer_manager.dart';
-import 'streaming/s3_range_proxy.dart';
-import 'streaming/segment_producer.dart';
-import 'streaming/segments.dart';
-import 'streaming/transcode_pool.dart';
+import '../streaming/hls_session.dart';
+import '../streaming/producer_manager.dart';
+import '../streaming/s3_range_proxy.dart';
+import '../streaming/segment_producer.dart';
+import '../streaming/segments.dart';
+import '../streaming/transcode_pool.dart';
+import 'torrent/torrent_client.dart';
 import 'torrent/transmission_client.dart';
 import 'tracker/torznab_tracker.dart';
+import 'tracker/tracker_connector.dart';
 import 'tracker/tmdb_client.dart';
 
-/// Wires the connector + client + signer into a shelf handler and serves it.
-Future<HttpServer> startServer(Config config) async {
+/// A running Cineseed server. [close] stops accepting connections, kills every
+/// live ffmpeg producer (+ its temp dir) and stops the range proxy.
+class CineseedServer {
+  CineseedServer._(this.http, this._onClose);
+
+  final HttpServer http;
+  final Future<void> Function() _onClose;
+  Future<void>? _closing;
+
+  Future<void> close() => _closing ??= _onClose();
+}
+
+/// Wires the tracker + torrent client + storage into a shelf handler and
+/// serves it.
+///
+/// Every dependency defaults to the implementation [config] describes; pass
+/// one to swap it (another torrent client, indexer, …) without forking.
+Future<CineseedServer> startServer(
+  Config config, {
+  TrackerConnector? tracker,
+  TorrentClient? client,
+  S3Signer? s3,
+  TmdbClient? tmdb,
+}) async {
   Log.enabled = config.debug;
   if (config.debug) {
     Log.d('boot', 'CINESEED_DEBUG on: verbose logging + segments kept on disk');
   }
 
-  final tracker = TorznabTracker(
+  tracker ??= TorznabTracker(
     baseUrl: config.trackerBaseUrl,
     apiKey: config.trackerApiKey,
   );
-  final client = TransmissionClient(
+  client ??= TransmissionClient(
     url: config.transmissionUrl,
     user: config.transmissionUser,
     pass: config.transmissionPass,
   );
-  final signer = S3Signer(
-    endpoint: config.s3Endpoint,
-    region: config.s3Region,
-    bucket: config.s3Bucket,
-    accessKey: config.s3AccessKey,
-    secretKey: config.s3SecretKey,
-    defaultTtl: config.streamUrlTtl,
-  );
-  final tmdb = (config.tmdbApiKey != null && config.tmdbApiKey!.isNotEmpty)
+  final signer =
+      s3 ??
+      S3Signer(
+        endpoint: config.s3Endpoint,
+        region: config.s3Region,
+        bucket: config.s3Bucket,
+        accessKey: config.s3AccessKey,
+        secretKey: config.s3SecretKey,
+        defaultTtl: config.streamUrlTtl,
+      );
+  tmdb ??= (config.tmdbApiKey != null && config.tmdbApiKey!.isNotEmpty)
       ? TmdbClient(apiKey: config.tmdbApiKey!)
       : null;
 
@@ -103,21 +129,18 @@ Future<HttpServer> startServer(Config config) async {
   // side effect of an incoming request.
   hls.startSweeping();
 
-  final root = Router();
-  root.mount(
-    '/api',
-    buildApiRouter(
-      tracker: tracker,
-      client: client,
-      signer: signer,
-      downloadDir: config.downloadDir,
-      incompleteDir: config.incompleteDir,
-      hls: hls,
-      segments: segments,
-      tmdb: tmdb,
-      debug: config.debug,
-    ).call,
+  final api = buildApiRouter(
+    tracker: tracker,
+    client: client,
+    signer: signer,
+    downloadDir: config.downloadDir,
+    incompleteDir: config.incompleteDir,
+    hls: hls,
+    segments: segments,
+    tmdb: tmdb,
+    debug: config.debug,
   );
+  final root = Router()..mount('/api', api.router.call);
 
   // Static Flutter web build (prod). During local testing the frontend runs
   // separately, so this just 404s if there's no build.
@@ -152,21 +175,11 @@ Future<HttpServer> startServer(Config config) async {
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, config.port);
 
-  // Graceful shutdown: stop accepting connections, kill all live ffmpeg
-  // producers (+ their temp dirs), and stop the range proxy.
-  var shuttingDown = false;
-  Future<void> shutdown(ProcessSignal _) async {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  return CineseedServer._(server, () async {
     await server.close(force: true);
+    api.dispose();
     hls.dispose();
     await producerManager.killAll();
     await proxy.stop();
-    exit(0);
-  }
-
-  ProcessSignal.sigterm.watch().listen(shutdown);
-  ProcessSignal.sigint.watch().listen(shutdown);
-
-  return server;
+  });
 }
