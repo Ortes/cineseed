@@ -7,7 +7,8 @@ import 'package:cineseed_streaming/cineseed_streaming.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
-import 'storage/s3_signer.dart';
+import 'storage/s3_offloader.dart';
+import 'torrent/local_file.dart';
 import 'torrent/stream_id.dart';
 import 'torrent/torrent_client.dart';
 import 'tracker/tmdb_client.dart';
@@ -27,10 +28,6 @@ const _contentTypes = {
 /// the torrent has no recognisable video). A single-video torrent yields one
 /// entry; a season pack yields one per episode — all of which must reach S3
 /// before the local copy may be freed.
-List<TorrentFile> _videoFiles(List<TorrentFile> files) => [
-  for (final i in videoFileIndices(files)) files[i],
-];
-
 String _contentTypeFor(String name) {
   final lower = name.toLowerCase();
   for (final e in _contentTypes.entries) {
@@ -41,10 +38,13 @@ String _contentTypeFor(String name) {
 
 /// All `/api/*` routes. Mounted under `/api` by the server. [dispose] stops
 /// the background S3 sweep so a closed server leaves no timer behind.
+///
+/// [offload] is null when S3 isn't configured: finished files then stay on the
+/// local disk and are served from there, and `onS3` reports "ready to stream".
 ({Router router, void Function() dispose}) buildApiRouter({
   required TrackerConnector tracker,
   required TorrentClient client,
-  required S3Signer signer,
+  required S3Offloader? offload,
   required String downloadDir,
   required String incompleteDir,
   required HlsSessionManager hls,
@@ -54,188 +54,7 @@ String _contentTypeFor(String name) {
 }) {
   final r = Router();
 
-  // Latch of hashes confirmed on S3 (immutable once true). `uploading`/`finalized`
-  // guard the once-per-hash upload and hand-over against concurrent polls.
-  final s3Ready = <String>{};
-  final uploading = <String>{};
-  final finalized = <String>{};
-  // hash → S3 upload fraction (0..1) while an upload is in flight.
-  final uploadProgress = <String, double>{};
-  // hash → how many video files are on neither S3 nor disk. Freeing the local
-  // copy before every file had landed used to strand the rest (fixed), and the
-  // torrents it already hit can never complete: their bytes are simply gone.
-  // Recording that stops resolveS3 from re-attempting an upload whose source
-  // does not exist — which it otherwise does on every single poll, forever.
-  final stranded = <String, int>{};
-  // Individual S3 object keys confirmed present (immutable once true, same as
-  // s3Ready but per file). A season pack is polled per file by the file picker
-  // and re-checked per file by resolveS3; without this each poll would re-HEAD
-  // every episode that is already up.
-  final s3Files = <String>{};
-
-  Future<bool> fileOnS3(String key) async {
-    if (s3Files.contains(key)) return true;
-    if (!await signer.exists(key)) return false;
-    s3Files.add(key);
-    return true;
-  }
-
-  // Once on S3 the local copy is redundant: point Transmission at the S3-backed
-  // mount (so it still sees its files) and free the download disk.
-  Future<void> finalizeToS3(String hash, TorrentStreamInfo info) async {
-    if (!finalized.add(hash)) return;
-    if (info.downloadDir.isEmpty || info.downloadDir == downloadDir) return;
-    final localPath = '${info.downloadDir}/${info.name}';
-    try {
-      await client.setLocation(hash, downloadDir, move: false);
-      final f = File(localPath);
-      final d = Directory(localPath);
-      if (await f.exists()) {
-        await f.delete();
-      } else if (await d.exists()) {
-        await d.delete(recursive: true);
-      }
-      Log.d('s3', 'finalized $hash → $downloadDir, freed $localPath');
-    } catch (e) {
-      finalized.remove(hash);
-      Log.d('s3', 'finalize $hash failed: $e');
-    }
-  }
-
-  // A finished torrent stays on the local download disk (info.downloadDir) so
-  // reads hit plain files, never the rclone VFS. Upload it to S3 straight from
-  // there — a busy reader can't disturb this.
-  //
-  // EVERY video file goes up, not just the primary one: finalizeToS3() frees the
-  // torrent's whole directory, so a season pack whose other episodes were never
-  // uploaded would lose them outright. Files go one at a time — fPutObject
-  // streams from disk, so serial keeps memory flat even on a small box.
-  Future<void> uploadToS3(
-    String hash,
-    TorrentStreamInfo info,
-    List<TorrentFile> files,
-  ) async {
-    if (!uploading.add(hash)) return;
-    final total = files.fold<int>(0, (sum, f) => sum + f.length);
-    var done = 0;
-    uploadProgress[hash] = 0;
-    try {
-      for (final file in files) {
-        final base = done;
-        await signer.putFile(
-          file.name,
-          '${info.downloadDir}/${file.name}',
-          onProgress: (sent) {
-            if (total > 0) uploadProgress[hash] = (base + sent) / total;
-          },
-        );
-        s3Files.add(
-          file.name,
-        ); // playable now, without waiting for its siblings
-        done += file.length;
-        Log.d('s3', 'uploaded ${file.name}');
-      }
-      s3Ready.add(hash); // we did the uploads — no need to HEAD to confirm them
-      uploadProgress.remove(hash);
-      unawaited(
-        finalizeToS3(hash, info),
-      ); // only now is the local copy redundant
-    } catch (e) {
-      uploading.remove(hash); // failed — retry on the next add / restart / poll
-      uploadProgress.remove(hash);
-      // Loud even in production: a stranded upload leaves the film off S3 and
-      // its bytes on the download disk, and nothing else reports it.
-      Log.w('s3', 'upload for $hash failed: $e');
-    }
-  }
-
-  // Resolve whether a torrent is on S3, driving the upload/finalize side-effects
-  // for finished-but-not-yet-uploaded ones. Shared by the /torrents poll and the
-  // internal sweep below so uploads run even with no client connected.
-  Future<bool> resolveS3(TorrentState s) async {
-    if (s3Ready.contains(s.hashString)) return true;
-    if (s.percentDone < 1.0) return false;
-    // An upload is already running for this hash — it latches s3Ready and
-    // finalizes itself. Skip the HEADs (a season pack would issue one per
-    // episode on every 1s poll).
-    if (uploading.contains(s.hashString)) return false;
-    // Known stranded: nothing can change until the data is fetched again, which
-    // goes through /torrents (add) or a control action — both clear this. Skip
-    // the per-episode HEADs rather than re-asking S3 about it every poll.
-    if (stranded.containsKey(s.hashString)) return false;
-    final info = await client.streamInfo(s.hashString);
-    if (info == null || info.files.isEmpty) return false;
-    final videos = _videoFiles(info.files);
-    // The torrent counts as on S3 only when *every* video file is there — the
-    // hand-over deletes the whole directory, so a partial set would strand the
-    // rest. Re-upload just what's missing (resumes an interrupted batch).
-    final missing = <TorrentFile>[];
-    for (final f in videos) {
-      if (!await fileOnS3(f.name)) missing.add(f);
-    }
-    if (missing.isEmpty) {
-      s3Ready.add(s.hashString);
-      unawaited(finalizeToS3(s.hashString, info));
-      return true;
-    }
-    // Only what we still hold can go up. A file missing from S3 *and* from disk
-    // is unrecoverable, and asking minio to upload it just fails on a -1 stat.
-    final uploadable = <TorrentFile>[];
-    var lost = 0;
-    for (final f in missing) {
-      if (await File('${info.downloadDir}/${f.name}').exists()) {
-        uploadable.add(f);
-      } else {
-        lost++;
-      }
-    }
-    if (lost > 0) {
-      stranded[s.hashString] = lost;
-      Log.w(
-        's3',
-        '${s.hashString}: $lost of ${videos.length} files are on neither S3 '
-            'nor disk — re-download to recover',
-      );
-    }
-    if (uploadable.isNotEmpty) {
-      unawaited(uploadToS3(s.hashString, info, uploadable));
-    }
-    return false;
-  }
-
-  // Poll at 1s only while a download is in flight, so a finish is caught and its
-  // upload kicked within a second. When nothing is downloading the loop stops
-  // entirely — there's no idle timer. It's (re)started at boot and on every add;
-  // upload success latches + finalizes on its own, so no polling is needed to
-  // notice the object landed.
-  var sweeping = false;
-  var disposed = false;
-  Timer? sweepTimer;
-  void ensureSweep() {
-    if (sweeping || disposed) return;
-    sweeping = true;
-    Future<void> tick() async {
-      var downloading = false;
-      try {
-        final states = await client.list();
-        for (final s in states) {
-          await resolveS3(s);
-        }
-        downloading = states.any((s) => s.percentDone < 1.0);
-      } catch (e) {
-        Log.d('s3', 'sweep failed: $e');
-      }
-      if (downloading && !disposed) {
-        sweepTimer = Timer(const Duration(seconds: 1), tick);
-      } else {
-        sweeping = false;
-      }
-    }
-
-    tick();
-  }
-
-  ensureSweep(); // boot: reconcile once (upload any finished-but-not-on-S3), then idle
+  offload?.ensureSweep(); // boot: upload any finished-but-not-on-S3, then idle
 
   // Runtime config for the frontend. The web build is baked into the image, so
   // it can't read env vars — it reads `debugMode` here at startup to mirror the
@@ -296,11 +115,11 @@ String _contentTypeFor(String name) {
     final states = await client.list();
     final annotated = await Future.wait(
       states.map((s) async {
-        final onS3 = await resolveS3(s);
+        if (offload == null) return s.copyWith(onS3: s.percentDone >= 1.0);
         return s.copyWith(
-          onS3: onS3,
-          uploadProgress: uploadProgress[s.hashString] ?? 0,
-          strandedFiles: stranded[s.hashString] ?? 0,
+          onS3: await offload.resolve(s),
+          uploadProgress: offload.uploadProgress(s.hashString),
+          strandedFiles: offload.strandedFiles(s.hashString),
         );
       }),
     );
@@ -331,7 +150,7 @@ String _contentTypeFor(String name) {
           name: f.name,
           length: f.length,
           bytesCompleted: f.bytesCompleted,
-          onS3: finished && await fileOnS3(f.name),
+          onS3: finished && (offload == null || await offload.fileOnS3(f.name)),
         ),
       );
     }
@@ -355,8 +174,8 @@ String _contentTypeFor(String name) {
     }
     final metainfo = await tracker.fetchTorrent(hash);
     await client.addTorrent(metainfo, paused: false);
-    stranded.remove(hash); // re-fetching is exactly what un-strands a torrent
-    ensureSweep(); // start the 1s poll for this download
+    offload?.unstrand(hash); // re-fetching is exactly what un-strands a torrent
+    offload?.ensureSweep(); // start the 1s poll for this download
     return _json({'ok': true});
   });
 
@@ -369,7 +188,7 @@ String _contentTypeFor(String name) {
     // Any deliberate action on a torrent may put its files back (a re-verify
     // after copying them in, a restart of a re-fetch) — re-evaluate rather than
     // trusting a verdict reached before the user intervened.
-    stranded.remove(hash);
+    offload?.unstrand(hash);
     switch (action) {
       case 'start':
         await client.start(hash);
@@ -418,8 +237,10 @@ String _contentTypeFor(String name) {
     // for a multi-GB file, and a seeding handle can delay it). Handing out a
     // presigned URL before the object lands → 404. So only go S3 once the
     // object actually exists; otherwise keep serving the local copy.
-    if (info.percentDone >= 1.0 && await fileOnS3(file.name)) {
-      final url = await signer.presign(file.name); // name == S3 key
+    if (offload != null &&
+        info.percentDone >= 1.0 &&
+        await offload.fileOnS3(file.name)) {
+      final url = await offload.signer.presign(file.name); // name == S3 key
       return _json({'url': url, 'mode': 's3', 'percentDone': info.percentDone});
     }
 
@@ -434,19 +255,28 @@ String _contentTypeFor(String name) {
     });
   });
 
-  // Download: only available once the completed object has landed on S3.
-  // Returns a presigned URL with Content-Disposition: attachment so the
-  // browser saves the file instead of streaming it inline.
+  // Download: only once the file is complete (and, with S3, has landed there).
+  // Returns a URL whose response carries Content-Disposition: attachment so the
+  // browser saves the file instead of streaming it inline: a presigned S3 URL,
+  // or the local-file route without S3.
   r.get('/download/<id>', (Request req, String id) async {
     final resolved = await resolveFile(id);
     if (resolved == null) {
       return _json({'error': 'torrent not found or no such file'}, 404);
     }
     final (info, file) = resolved;
-    if (info.percentDone < 1.0 || !await fileOnS3(file.name)) {
+    if (info.percentDone < 1.0) return _json({'error': 'not ready yet'}, 409);
+    if (offload == null) {
+      final url = req.requestedUri.replace(
+        path: '/api/file/$id',
+        queryParameters: {'download': '1'},
+      );
+      return _json({'url': url.toString()});
+    }
+    if (!await offload.fileOnS3(file.name)) {
       return _json({'error': 'not ready yet'}, 409);
     }
-    final url = await signer.presignDownload(file.name);
+    final url = await offload.signer.presignDownload(file.name);
     return _json({'url': url});
   });
 
@@ -460,32 +290,18 @@ String _contentTypeFor(String name) {
       return _json({'error': 'torrent not found or no such file'}, 404);
     }
     final (info, tf) = resolved;
-    // Use Transmission's per-torrent downloadDir as the primary lookup. A
-    // downloading/finished-but-not-yet-uploaded torrent stays on the local
-    // download disk; only once its object is on S3 does finalizeToS3()
-    // relocate it onto DOWNLOAD_DIR (e.g. an rclone mount) — by which
-    // point playback uses the presigned S3 URL, not this route. If an
-    // incomplete-dir is configured we fall through there when not found.
-    final dir = info.downloadDir.isNotEmpty ? info.downloadDir : downloadDir;
-    // While downloading, Transmission (rename-partial-files=true) names the
-    // file `<name>.part`; it is renamed to `<name>` on completion.
-    File? find(String base) {
-      final f = File(base);
-      if (f.existsSync()) return f;
-      final p = File('$base.part');
-      if (p.existsSync()) return p;
-      return null;
-    }
-
-    var file = find('$dir/${tf.name}');
-    if (file == null && incompleteDir.isNotEmpty) {
-      file = find('$incompleteDir/${tf.name}');
-    }
+    // A downloading/finished-but-not-yet-uploaded torrent stays on the local
+    // download disk; only once its object is on S3 does the offloader relocate
+    // it onto DOWNLOAD_DIR (e.g. an rclone mount) — by which point playback
+    // uses the presigned S3 URL, not this route.
+    final file = localFileOf(
+      info,
+      tf,
+      fallbackDir: downloadDir,
+      incompleteDir: incompleteDir,
+    );
     if (file == null) {
-      return _json({
-        'error': 'file not on disk yet',
-        'path': '$dir/${tf.name}',
-      }, 404);
+      return _json({'error': 'file not on disk yet', 'name': tf.name}, 404);
     }
 
     final total = tf.length;
@@ -530,14 +346,18 @@ String _contentTypeFor(String name) {
     }
 
     final length = end - start + 1;
+    // A range-less GET of a complete file (a browser download) is a plain 200.
+    final partial = range != null || length != total;
     return Response(
-      206,
+      partial ? 206 : 200,
       body: _rangeStream(file, start, end),
       headers: {
         'Content-Type': contentType,
         'Accept-Ranges': 'bytes',
         'Content-Length': '$length',
-        'Content-Range': 'bytes $start-$end/$total',
+        if (partial) 'Content-Range': 'bytes $start-$end/$total',
+        if (req.url.queryParameters['download'] == '1')
+          'Content-Disposition': _attachment(tf.name),
         'Cache-Control': 'no-store',
         // So the cross-origin (local dev) <video> can read range metadata.
         'Access-Control-Expose-Headers':
@@ -669,13 +489,16 @@ String _contentTypeFor(String name) {
     );
   });
 
-  return (
-    router: r,
-    dispose: () {
-      disposed = true;
-      sweepTimer?.cancel();
-    },
-  );
+  return (router: r, dispose: () => offload?.dispose());
+}
+
+/// `attachment` with the file's base name, ASCII-safe plus RFC 5987 for the
+/// rest (release names are often accented).
+String _attachment(String path) {
+  final name = path.split('/').last;
+  final ascii = name.replaceAll(RegExp(r'[^\x20-\x7E]|["\\]'), '_');
+  return 'attachment; filename="$ascii"; '
+      "filename*=UTF-8''${Uri.encodeComponent(name)}";
 }
 
 Response _m3u8(String body) => Response.ok(

@@ -342,8 +342,9 @@ class PlayerScreen extends HookConsumerWidget {
           child: Text(
             'Still downloading.\n\n'
             'In-app playback streams via HLS, which is available once the file '
-            'has finished and landed on S3. While downloading, copy the stream '
-            'link from the library and open it in VLC.',
+            'is ready (downloaded, and uploaded when S3 is configured). While '
+            'downloading, copy the stream link from the library and open it '
+            'in VLC.',
             textAlign: TextAlign.center,
           ),
         );

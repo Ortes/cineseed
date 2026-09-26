@@ -258,7 +258,7 @@ class _FileTile extends ConsumerWidget {
                   IconButton(
                     tooltip: file.onS3
                         ? 'Download'
-                        : 'Available once this file is on S3',
+                        : 'Available once this file is ready',
                     icon: const Icon(Icons.download_rounded, size: 20),
                     color: CineseedColors.creamMuted,
                     onPressed: file.onS3
@@ -273,7 +273,7 @@ class _FileTile extends ConsumerWidget {
                   IconButton(
                     tooltip: file.onS3
                         ? 'Play in browser'
-                        : 'Available once this file is on S3 — '
+                        : 'Available once this file is ready — '
                               'use the copy button for VLC',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
                     color: file.onS3

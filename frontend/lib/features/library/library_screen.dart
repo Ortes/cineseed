@@ -536,7 +536,8 @@ class _TorrentTile extends ConsumerWidget {
                         ? 'Play in browser'
                         : finalizing
                         ? 'Available once the upload to S3 finishes'
-                        : 'Available once on S3 — use the copy button for VLC',
+                        : 'Available once the download finishes — use the copy '
+                              'button for VLC',
                     icon: const Icon(Icons.play_arrow_rounded, size: 24),
                     color: t.onS3
                         ? CineseedColors.cream

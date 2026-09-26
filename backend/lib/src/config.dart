@@ -1,5 +1,22 @@
 import 'dart:io';
 
+/// S3-compatible storage finished films are offloaded to. Optional as a whole.
+class S3Settings {
+  final String endpoint;
+  final String region;
+  final String bucket;
+  final String accessKey;
+  final String secretKey;
+
+  const S3Settings({
+    required this.endpoint,
+    required this.region,
+    required this.bucket,
+    required this.accessKey,
+    required this.secretKey,
+  });
+}
+
 /// Runtime configuration, read from environment variables. Secrets are NEVER
 /// committed — they come from the server's `.env` (docker --env-file) or the
 /// process environment. See `.env.example` for the full list.
@@ -9,16 +26,15 @@ class Config {
   final String transmissionUrl;
   final String? transmissionUser;
   final String? transmissionPass;
-  final String s3Endpoint;
-  final String s3Region;
-  final String s3Bucket;
-  final String s3AccessKey;
-  final String s3SecretKey;
+
+  /// Null: no S3 — finished films stay on the local disk and are served
+  /// from there.
+  final S3Settings? s3;
   final int streamUrlTtl; // seconds
   final int port;
   final String publicDir;
   final String
-  downloadDir; // final destination (e.g. an rclone mount of the S3 bucket)
+  downloadDir; // post-upload location with S3 (e.g. an rclone mount of the bucket)
   final String
   incompleteDir; // local disk where Transmission writes during download
   final String? tmdbApiKey; // optional — disables /api/tmdb when empty
@@ -50,11 +66,7 @@ class Config {
     required this.transmissionUrl,
     required this.transmissionUser,
     required this.transmissionPass,
-    required this.s3Endpoint,
-    required this.s3Region,
-    required this.s3Bucket,
-    required this.s3AccessKey,
-    required this.s3SecretKey,
+    required this.s3,
     required this.streamUrlTtl,
     required this.port,
     required this.publicDir,
@@ -103,11 +115,7 @@ class Config {
       ),
       transmissionUser: env['TRANSMISSION_USER'],
       transmissionPass: env['TRANSMISSION_PASS'],
-      s3Endpoint: required('S3_ENDPOINT'),
-      s3Region: optional('S3_REGION', 'us-east-1'),
-      s3Bucket: required('S3_BUCKET'),
-      s3AccessKey: required('S3_ACCESS_KEY'),
-      s3SecretKey: required('S3_SECRET_KEY'),
+      s3: _s3(env),
       streamUrlTtl: int.tryParse(optional('STREAM_URL_TTL', '21600')) ?? 21600,
       port: int.tryParse(optional('PORT', '8080')) ?? 8080,
       publicDir: optional('PUBLIC_DIR', 'public'),
@@ -150,4 +158,29 @@ class Config {
       debug: optional('CINESEED_DEBUG', 'false').toLowerCase() == 'true',
     );
   }
+}
+
+/// All of the S3 variables, or none of them: a partial set is a typo, not a
+/// request for local mode, so it fails loudly.
+S3Settings? _s3(Map<String, String> env) {
+  const keys = ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'];
+  final missing = [
+    for (final k in keys)
+      if ((env[k] ?? '').isEmpty) k,
+  ];
+  if (missing.length == keys.length) return null;
+  if (missing.isNotEmpty) {
+    throw StateError(
+      'S3 is partly configured; missing: ${missing.join(', ')} '
+      '(set all of ${keys.join(', ')}, or none for local-only storage)',
+    );
+  }
+  final region = env['S3_REGION'] ?? '';
+  return S3Settings(
+    endpoint: env['S3_ENDPOINT']!,
+    region: region.isEmpty ? 'us-east-1' : region,
+    bucket: env['S3_BUCKET']!,
+    accessKey: env['S3_ACCESS_KEY']!,
+    secretKey: env['S3_SECRET_KEY']!,
+  );
 }

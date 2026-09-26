@@ -13,11 +13,11 @@ class TorrentState {
   final int totalSize; // bytes of the (wanted) content
   final bool isFinished;
 
-  /// Whether the completed file has actually landed on S3. This — not
-  /// [isReady] — is the real gate for in-app HLS playback and the download
-  /// link, both of which require the presigned S3 object to exist. Backend
-  /// computes it (`signer.exists`); Transmission never reports it. False while
-  /// downloading AND during the rclone upload window after 100%.
+  /// Ready to stream: the real gate for in-app HLS playback and the download
+  /// link (the wire name predates local-only mode). With S3, the completed
+  /// file has actually landed there — false while downloading AND during the
+  /// upload window after 100% (backend computes it; Transmission never reports
+  /// it). Without S3, simply "download complete".
   final bool onS3;
 
   /// Fraction (0.0 .. 1.0) of the S3 upload done, during the window after 100%

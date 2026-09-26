@@ -11,6 +11,7 @@ import 'package:shelf_static/shelf_static.dart';
 import 'api.dart';
 import 'config.dart';
 import 'media/torrent_media_resolver.dart';
+import 'storage/s3_offloader.dart';
 import 'storage/s3_signer.dart';
 import 'torrent/torrent_client.dart';
 import 'torrent/transmission_client.dart';
@@ -35,6 +36,7 @@ class CineseedServer {
 ///
 /// Every dependency defaults to the implementation [config] describes; pass
 /// one to swap it (another torrent client, indexer, …) without forking.
+/// Without S3 ([s3] null and none in [config]) films stay on the local disk.
 Future<CineseedServer> startServer(
   Config config, {
   TrackerConnector? tracker,
@@ -56,16 +58,35 @@ Future<CineseedServer> startServer(
     user: config.transmissionUser,
     pass: config.transmissionPass,
   );
+  final s3Config = config.s3;
   final signer =
       s3 ??
-      S3Signer(
-        endpoint: config.s3Endpoint,
-        region: config.s3Region,
-        bucket: config.s3Bucket,
-        accessKey: config.s3AccessKey,
-        secretKey: config.s3SecretKey,
-        defaultTtl: config.streamUrlTtl,
-      );
+      (s3Config == null
+          ? null
+          : S3Signer(
+              endpoint: s3Config.endpoint,
+              region: s3Config.region,
+              bucket: s3Config.bucket,
+              accessKey: s3Config.accessKey,
+              secretKey: s3Config.secretKey,
+              defaultTtl: config.streamUrlTtl,
+            ));
+  Log.w(
+    'boot',
+    signer == null
+        ? 'storage: local disk only (no S3 configured)'
+        : 'storage: S3 offload, post-upload dir ${config.downloadDir}',
+  );
+  final offload = signer == null
+      ? null
+      : S3Offloader(
+          client: client,
+          signer: signer,
+          postUploadDir: config.downloadDir,
+        );
+  // Serves local files to ffmpeg for HLS when there is no S3.
+  final localFiles = signer == null ? LocalRangeServer() : null;
+  await localFiles?.start();
   tmdb ??= (config.tmdbApiKey != null && config.tmdbApiKey!.isNotEmpty)
       ? TmdbClient(apiKey: config.tmdbApiKey!)
       : null;
@@ -110,8 +131,11 @@ Future<CineseedServer> startServer(
       client: client,
       signer: signer,
       ttl: Duration(seconds: config.streamUrlTtl),
+      downloadDir: config.downloadDir,
+      incompleteDir: config.incompleteDir,
     ),
     proxy: proxy,
+    localFiles: localFiles,
     ffprobeBin: config.ffprobeBin,
     targetSegmentSeconds: config.hlsSegmentSeconds,
     idleTtl: Duration(seconds: config.hlsSessionIdleTtl),
@@ -129,7 +153,7 @@ Future<CineseedServer> startServer(
   final api = buildApiRouter(
     tracker: tracker,
     client: client,
-    signer: signer,
+    offload: offload,
     downloadDir: config.downloadDir,
     incompleteDir: config.incompleteDir,
     hls: hls,
@@ -178,5 +202,6 @@ Future<CineseedServer> startServer(
     hls.dispose();
     await producerManager.killAll();
     await proxy.stop();
+    await localFiles?.stop();
   });
 }

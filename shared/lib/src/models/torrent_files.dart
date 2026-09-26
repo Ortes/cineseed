@@ -12,9 +12,10 @@ class TorrentFileInfo {
   final int length; // bytes
   final int bytesCompleted; // bytes downloaded so far
 
-  /// Whether THIS file has landed on S3 — the gate for in-app playback, Cast
-  /// and download. A season pack uploads one file at a time, so early episodes
-  /// become playable while the later ones are still going up.
+  /// Whether THIS file is ready to stream (see [TorrentState.onS3]) — the gate
+  /// for in-app playback, Cast and download. With S3 a season pack uploads one
+  /// file at a time, so early episodes become playable while the later ones
+  /// are still going up.
   final bool onS3;
 
   const TorrentFileInfo({

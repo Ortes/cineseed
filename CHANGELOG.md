@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   Sources come from a `MediaSourceResolver` (`HttpMediaSource` through the caching
   range proxy, or `FileMediaSource` served by the new loopback `LocalRangeServer`).
 
+- Local-only storage: S3 is optional. With no `S3_*` variables, finished films stay on
+  the local disk and are streamed (direct and HLS) and downloaded from there. A partial
+  S3 configuration refuses to boot.
+
 ### Changed
 - The repo is a pub workspace with a single root `pubspec.lock`; resolve with
   `flutter pub get` at the root.

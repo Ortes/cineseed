@@ -17,14 +17,14 @@ seeding dashboard, and an integrated player.
 ## Features
 
 - **Watch while downloading** — sequential download + HTTP Range (206) streaming of the
-  in-progress file; playback switches to a presigned S3 URL once the object is uploaded.
-- **Backend-driven S3 offload** — finished files are uploaded to the bucket by the server
-  itself, then Transmission is relocated onto an rclone mount of the same bucket so it
-  keeps seeding with no local copy.
+  in-progress file; with S3, playback switches to a presigned URL once it is uploaded.
+- **Local disk or S3** — without S3, finished films stay on the local disk and are
+  streamed from there. With S3, the server uploads them itself, then relocates
+  Transmission onto an rclone mount of the bucket so it keeps seeding with no local copy.
 - **Live HLS remuxing** — on-demand fMP4 segmentation with ffmpeg (video stream-copied,
   never transcoded): multiple audio tracks, subtitle renditions (WebVTT), and Dolby/DTS →
-  AAC audio transcoding for browsers without those licenses. Fed by a caching S3 range
-  proxy tuned for high-TTFB object storage.
+  AAC audio transcoding for browsers without those licenses. S3 sources go through a
+  caching range proxy tuned for high-TTFB object storage.
 - **Chromecast** support and a full in-app player (audio/subtitle track switching,
   keyboard seeking, fullscreen).
 - **TMDB integration** — poster grid, film pages grouping all releases of a title.
@@ -54,8 +54,9 @@ Flutter Web  ──►  Dart backend (shelf, 1 binary, serves the web build too)
 
 - A **Torznab** endpoint (Prowlarr / Jackett / a tracker's native feed) and its API key
 - **Transmission** (RPC) — the `TorrentClient` interface is small; other clients could be added
-- **S3-compatible storage** (AWS, Scaleway, MinIO, Backblaze…)
 - **ffmpeg / ffprobe** on the server (HLS remuxing and track probing)
+- Optionally **S3-compatible storage** (AWS, Scaleway, MinIO, Backblaze…) — without it,
+  films stay on the local disk and are streamed from there
 - Optionally a **TMDB API key** for posters and metadata
 
 ## Getting started (dev)
