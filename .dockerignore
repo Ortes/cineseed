@@ -55,5 +55,6 @@ CLAUDE.md
 
 # Personal ops files and agent config — never part of the build context
 private/
+deploy/data/
 .claude/
 CLAUDE.local.md

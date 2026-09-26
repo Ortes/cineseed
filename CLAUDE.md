@@ -48,11 +48,15 @@ to verify any UI change.
 
 ## Deploy
 
-`deploy/deploy.sh` builds for `linux/amd64`, pushes `$IMAGE:<sha>` + `:latest`, rsyncs
-`deploy/docker-compose.yml`, `deploy/Caddyfile`, and `.env` to the server, then
-`docker compose pull && up -d` scoped to the cineseed service. The targets (`SERVER`,
-`REMOTE`, `IMAGE`) come from `deploy/deploy.env` (gitignored) — see
-`deploy/deploy.env.example`. The server-side `.env` holds all runtime envvars (chmod 600).
+CI publishes a multi-arch image on every push to `main` (`sha-<7>`, `edge`) and on `v*`
+tags (`X.Y.Z`, `latest`), then dispatches a deploy to the repo in the `DEPLOY_REPO`
+variable (the private ops repo), which syncs the compose files and restarts cineseed.
+`deploy/deploy.sh` is the manual fallback: builds `linux/amd64` locally, pushes
+`$IMAGE:sha-<7>`, rsyncs compose + Caddyfile + override + `.env`, pins `CINESEED_IMAGE`
+in the server's `.env`, and recreates only the cineseed service. Targets come from
+`deploy/deploy.env` (gitignored). Host-specific mounts go in
+`deploy/docker-compose.override.yml` (gitignored). The server-side `.env` holds all
+runtime envvars (chmod 600).
 
 ## Streaming — watch-while-downloading
 

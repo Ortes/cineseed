@@ -1,26 +1,27 @@
-# Server-side compose: lives in the compose project dir on the host (see
-# REMOTE in deploy/deploy.env). The deploy script (deploy/deploy.sh) rsyncs
-# this file, the Caddyfile, and .env there before bringing services up.
+# Cineseed + Caddy (TLS) + Transmission on one host.
 #
-# If the image is private, the server needs `docker login` once with a PAT
-# that has pull (read:packages) scope.
+#   cd deploy && cp ../.env.example .env   # fill it in, set CINESEED_DOMAIN
+#   docker compose up -d
 #
-# network_mode=host so the backend reaches Transmission on localhost and any
-# host mount (e.g. an rclone FUSE mount) has the same path inside and outside
-# the container. PORT comes from .env (defaults to 8080).
+# Everything host-specific comes from .env (compose reads it for ${…} too):
+#   CINESEED_IMAGE  image to run (default: the latest release)
+#   CINESEED_DATA   host dir for downloads + Transmission's config (./data)
+#   PUID / PGID     user Transmission writes files as (1000)
+# A layout this file can't express (e.g. an rclone FUSE mount) goes in a
+# docker-compose.override.yml next to it, which compose merges in on its own.
 #
-# The /mnt/torrents and /mnt/downloads bind mounts below match the reference
-# host layout (DOWNLOAD_DIR / INCOMPLETE_DIR in .env) — adjust to yours.
+# network_mode=host so the backend reaches Transmission on localhost. Both
+# containers mount the downloads at the same path, because the backend opens
+# files at the path Transmission reports.
 
 services:
   cineseed:
-    image: ghcr.io/ortes/cineseed:latest # or your own registry image
+    image: ${CINESEED_IMAGE:-ghcr.io/ortes/cineseed:latest}
     restart: unless-stopped
     network_mode: host
     env_file: .env
     volumes:
-      - /mnt/torrents:/mnt/torrents
-      - /mnt/downloads:/mnt/downloads
+      - ${CINESEED_DATA:-./data}/downloads:/downloads
 
   caddy:
     image: caddy:2-alpine
@@ -36,28 +37,23 @@ services:
   # Transmission stays on the default bridge network: RPC is only reachable
   # from the host (the backend runs with network_mode=host), and the peer
   # port 51413 MUST be published tcp+udp — without it the client is not
-  # connectable and seeding upload stays near zero.
+  # connectable and seeding upload stays near zero. Its default download
+  # dirs are /downloads/complete and /downloads/incomplete.
   transmission:
     image: lscr.io/linuxserver/transmission:latest
-    container_name: transmission-daemon
     restart: unless-stopped
     environment:
-      - PUID=0
-      - PGID=0
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - TZ=${TZ:-Etc/UTC}
     ports:
-      # RPC port — must match rpc-port in Transmission's settings.json and
-      # TRANSMISSION_URL in .env.
-      - "127.0.0.1:9092:9092"
+      # RPC — must match TRANSMISSION_URL in .env.
+      - "127.0.0.1:9091:9091"
       - "51413:51413"
       - "51413:51413/udp"
     volumes:
-      - /var/lib/transmission-daemon/.config/transmission-daemon:/config
-      # rshared: a FUSE mount (e.g. rclone) may appear/restart after this
-      # container starts (no systemd ordering under compose) — propagation
-      # keeps it visible.
-      - /mnt/torrents:/mnt/torrents:rshared
-      - /mnt/downloads:/mnt/downloads
+      - ${CINESEED_DATA:-./data}/transmission:/config
+      - ${CINESEED_DATA:-./data}/downloads:/downloads
 
 volumes:
   caddy_data:

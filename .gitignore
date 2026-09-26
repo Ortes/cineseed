@@ -9,6 +9,9 @@ private/
 CLAUDE.local.md
 .claude/
 deploy/deploy.env
+# Host-specific compose layout (symlinked from private/) and default data dir
+deploy/docker-compose.override.yml
+deploy/data/
 *.key
 *.pem
 *.p12

@@ -104,13 +104,19 @@ Future<void> main() async {
 
 ## Deployment
 
-A single Docker image contains the compiled backend and the Flutter web build
-([deploy/Dockerfile](deploy/Dockerfile)). The reference setup
-([deploy/docker-compose.yml](deploy/docker-compose.yml)) runs cineseed + Caddy (TLS,
-compression) + Transmission on one host; [deploy/deploy.sh](deploy/deploy.sh) builds,
-pushes to your registry, rsyncs config + `.env` to the server, and restarts the service —
-copy `deploy/deploy.env.example` to `deploy/deploy.env` and fill in your targets. Set
-`CINESEED_DOMAIN` in `.env` for Caddy.
+One multi-arch image (`linux/amd64`, `linux/arm64`) contains the compiled backend and
+the Flutter web build: `ghcr.io/ortes/cineseed:latest` (or `:X.Y.Z`). The reference
+setup runs cineseed + Caddy (TLS) + Transmission on one host:
+
+```bash
+cd deploy && cp ../.env.example .env   # tracker, CINESEED_DOMAIN, optional S3
+docker compose up -d
+```
+
+Host paths, image and user come from `.env` (`CINESEED_DATA`, `CINESEED_IMAGE`, `PUID`);
+anything more specific (e.g. an rclone mount) goes in a `docker-compose.override.yml`
+next to it. [deploy/deploy.sh](deploy/deploy.sh) builds your own image, pushes it and
+restarts a remote host (targets in `deploy/deploy.env`, see the `.example`).
 
 > **Security note:** the API has **no authentication** — anyone who can reach it can
 > search, add torrents, and stream. Run it on a private network / VPN, or put your own
