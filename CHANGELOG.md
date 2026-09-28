@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ## [Unreleased]
 
 ### Added
+- Torrents with several videos (season packs): the file list groups files by folder (a
+  folder holding a single file joins its parent), and the library card shows the video
+  count and opens that list instead of copying, casting or downloading one of its files
+  (`videoCount` on `GET /api/torrents`).
+- Watched marks, kept in the browser's `localStorage`: set automatically at 90 % of
+  playback, toggled by hand on film cards, files and in the player.
 - Suggestions tab (C411 only): this year's films on C411 (last year's too from January to
   March), sorted by rating, release date, or both ("Recommended"), each linked to
   AlloCiné (`GET /api/suggestions`, rebuilt daily), with a "Rated only" filter. Film

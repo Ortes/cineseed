@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:cineseed_shared/cineseed_shared.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:web/web.dart' as web;
 
 import 'api_client.dart';
 
@@ -27,6 +30,28 @@ class UserInitiatedPlayback extends Notifier<bool> {
   bool build() => false;
 
   void mark() => state = true;
+}
+
+/// The videos marked watched, by stream id ([ApiClient.streamId]: `<hash>` for
+/// a single-video torrent, `<hash>.<fileIndex>` for a file picked from a
+/// torrent's list). Kept in this browser's localStorage only: the backend holds
+/// no state about viewing, so there is nothing to keep in sync.
+final watchedProvider = NotifierProvider<Watched, Set<String>>(Watched.new);
+
+class Watched extends Notifier<Set<String>> {
+  static const storageKey = 'cineseed.watched';
+
+  @override
+  Set<String> build() {
+    final raw = web.window.localStorage.getItem(storageKey);
+    return raw == null ? {} : {...(jsonDecode(raw) as List).cast<String>()};
+  }
+
+  void set(String id, {required bool watched}) {
+    if (state.contains(id) == watched) return;
+    state = watched ? {...state, id} : ({...state}..remove(id));
+    web.window.localStorage.setItem(storageKey, jsonEncode(state.toList()));
+  }
 }
 
 /// Search results, driven by [SearchController.search].

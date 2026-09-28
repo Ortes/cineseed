@@ -36,6 +36,11 @@ class TorrentState {
   /// reads). The library's Play gate; backend-computed.
   final bool playable;
 
+  /// How many video files the torrent holds: what its file list shows. More
+  /// than one (a season pack) and the library opens that list rather than
+  /// acting on a single file. 0 when unknown (metadata not fetched yet).
+  final int videoCount;
+
   const TorrentState({
     required this.hashString,
     required this.name,
@@ -52,6 +57,7 @@ class TorrentState {
     this.uploadProgress = 0,
     this.strandedFiles = 0,
     this.playable = false,
+    this.videoCount = 0,
   });
 
   /// Bytes fully present locally (Transmission's view). NB: this is NOT the
@@ -78,6 +84,7 @@ class TorrentState {
     double? uploadProgress,
     int? strandedFiles,
     bool? playable,
+    int? videoCount,
   }) => TorrentState(
     hashString: hashString,
     name: name,
@@ -94,6 +101,7 @@ class TorrentState {
     uploadProgress: uploadProgress ?? this.uploadProgress,
     strandedFiles: strandedFiles ?? this.strandedFiles,
     playable: playable ?? this.playable,
+    videoCount: videoCount ?? this.videoCount,
   );
 
   factory TorrentState.fromJson(Map<String, dynamic> json) => TorrentState(
@@ -112,6 +120,7 @@ class TorrentState {
     uploadProgress: (json['uploadProgress'] as num?)?.toDouble() ?? 0,
     strandedFiles: (json['strandedFiles'] as num?)?.toInt() ?? 0,
     playable: json['playable'] as bool? ?? false,
+    videoCount: (json['videoCount'] as num?)?.toInt() ?? 0,
   );
 
   Map<String, dynamic> toJson() => {
@@ -130,5 +139,6 @@ class TorrentState {
     'uploadProgress': uploadProgress,
     'strandedFiles': strandedFiles,
     'playable': playable,
+    'videoCount': videoCount,
   };
 }

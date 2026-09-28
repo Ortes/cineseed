@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../core/api_client.dart';
 import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../search/format_helpers.dart';
 import 'cast_button.dart';
 import 'player_screen.dart';
 import 'stream_actions.dart';
+import 'watched_button.dart';
 
 /// Entry point for `/watch/:hash`: decides whether there is anything to choose.
 ///
@@ -74,16 +76,20 @@ class _Shell extends StatelessWidget {
   );
 }
 
-class _FilePicker extends StatelessWidget {
+class _FilePicker extends ConsumerWidget {
   const _FilePicker({required this.hash, required this.torrent});
 
   final String hash;
   final TorrentFiles torrent;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ready = torrent.files.where((f) => f.onS3).length;
     final total = torrent.files.length;
+    final watchedIds = ref.watch(watchedProvider);
+    final watched = torrent.files
+        .where((f) => watchedIds.contains(ApiClient.streamId(hash, f.index)))
+        .length;
 
     return Scaffold(
       backgroundColor: CineseedColors.background,
@@ -104,10 +110,16 @@ class _FilePicker extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    ready == total
-                        ? '$total files · all ready to stream'
-                        : '$ready of $total ready to stream  ·  '
-                              '${(torrent.percentDone * 100).toStringAsFixed(1)} % downloaded',
+                    [
+                      if (ready == total)
+                        '$total files · all ready to stream'
+                      else ...[
+                        '$ready of $total ready to stream',
+                        '${(torrent.percentDone * 100).toStringAsFixed(1)} % '
+                            'downloaded',
+                      ],
+                      if (watched > 0) '$watched watched',
+                    ].join('  ·  '),
                     style: const TextStyle(
                       fontSize: 12,
                       color: CineseedColors.creamMuted,
@@ -118,20 +130,57 @@ class _FilePicker extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-              itemCount: torrent.files.length,
-              itemBuilder: (context, i) => _FileTile(
-                hash: hash,
-                file: torrent.files[i],
-                packDone: torrent.percentDone >= 1.0,
-              ),
+              children: [
+                for (final MapEntry(key: folder, value: files)
+                    in torrent.byFolder.entries) ...[
+                  if (folder.isNotEmpty) _FolderHeader(folder: folder),
+                  for (final f in files)
+                    _FileTile(
+                      hash: hash,
+                      file: f,
+                      packDone: torrent.percentDone >= 1.0,
+                    ),
+                ],
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// Heads one folder's files in the list; top-level files have none.
+class _FolderHeader extends StatelessWidget {
+  const _FolderHeader({required this.folder});
+  final String folder;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+    child: Row(
+      children: [
+        const Icon(
+          Icons.folder_outlined,
+          size: 16,
+          color: CineseedColors.creamMuted,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            folder,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: CineseedColors.cream,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _FileTile extends ConsumerWidget {
@@ -243,8 +292,9 @@ class _FileTile extends ConsumerWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                WatchedButton(id: ApiClient.streamId(hash, file.index)),
                 if (file.hasBytes) ...[
-                  const SizedBox(width: 8),
                   if (file.onS3)
                     CastButton(
                       hash: hash,

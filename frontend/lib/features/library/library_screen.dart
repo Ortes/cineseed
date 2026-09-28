@@ -8,6 +8,7 @@ import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../player/cast_button.dart';
 import '../player/stream_actions.dart';
+import '../player/watched_button.dart';
 import '../search/format_helpers.dart';
 import '../search/search_screen.dart';
 import '../suggestions/suggestions_view.dart';
@@ -382,6 +383,14 @@ class _TorrentTile extends ConsumerWidget {
     // seconds into a download). Cast and download need the file on S3
     // (`onS3`).
     final hasBytes = t.percentDone > 0;
+    // Several videos (a season pack): there is no one file for the copy-link,
+    // Cast or download to act on, so those live on each file of its list,
+    // which tapping the card or Play opens.
+    final multi = t.videoCount > 1;
+    final watchedIds = ref.watch(watchedProvider);
+    final watched = watchedIds
+        .where((id) => id.startsWith('${t.hashString}.'))
+        .length;
     // Stranded first: such a torrent is also 100% done and not on S3, so it
     // would otherwise read as "uploading" forever — an upload that can never
     // start, let alone finish.
@@ -396,6 +405,9 @@ class _TorrentTile extends ConsumerWidget {
         ? 'Uploading to S3…  ${(t.uploadProgress * 100).toStringAsFixed(0)} %'
         : '${(t.percentDone * 100).toStringAsFixed(1)} %  ·  '
               '${t.playable ? 'playable while downloading' : 'starting…'}';
+    final videosText = multi
+        ? '  ·  ${t.videoCount} videos${watched > 0 ? ', $watched watched' : ''}'
+        : '';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -479,7 +491,7 @@ class _TorrentTile extends ConsumerWidget {
                         ),
                       if (!t.onS3) const SizedBox(height: 6),
                       Text(
-                        statusText,
+                        '$statusText$videosText',
                         style: const TextStyle(
                           fontSize: 11.5,
                           color: CineseedColors.creamMuted,
@@ -495,10 +507,11 @@ class _TorrentTile extends ConsumerWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                if (!multi) WatchedButton(id: t.hashString),
                 if (hasBytes) ...[
-                  const SizedBox(width: 8),
                   // Cast needs the S3 object (same HLS path as in-app).
-                  if (t.onS3)
+                  if (t.onS3 && !multi)
                     CastButton(
                       hash: t.hashString,
                       title: t.name,
@@ -508,36 +521,41 @@ class _TorrentTile extends ConsumerWidget {
                   // mid-download — the one action that works before S3, so it
                   // stays available throughout. (No index-at-end pain like
                   // Chrome's <video>.)
-                  Tooltip(
-                    message:
-                        'Copy stream URL — then in VLC: '
-                        '⌘N (Open Network), paste, Open',
-                    child: IconButton(
-                      icon: const Icon(Icons.content_copy_rounded, size: 18),
-                      color: CineseedColors.creamMuted,
-                      onPressed: () =>
-                          copyStreamUrl(context, ref, t.hashString),
+                  if (!multi) ...[
+                    Tooltip(
+                      message:
+                          'Copy stream URL — then in VLC: '
+                          '⌘N (Open Network), paste, Open',
+                      child: IconButton(
+                        icon: const Icon(Icons.content_copy_rounded, size: 18),
+                        color: CineseedColors.creamMuted,
+                        onPressed: () =>
+                            copyStreamUrl(context, ref, t.hashString),
+                      ),
                     ),
-                  ),
-                  // Download serves the presigned S3 object — disabled (greyed)
-                  // until the file is actually on S3, so it can't 409.
-                  IconButton(
-                    tooltip: t.onS3
-                        ? 'Download'
-                        : finalizing
-                        ? 'Available once the upload to S3 finishes'
-                        : 'Available once the download finishes',
-                    icon: const Icon(Icons.download_rounded, size: 20),
-                    color: CineseedColors.creamMuted,
-                    onPressed: t.onS3
-                        ? () => downloadFile(context, ref, t.hashString)
-                        : null,
-                  ),
+                    // Download serves the presigned S3 object — disabled
+                    // (greyed) until the file is actually on S3, so it can't
+                    // 409.
+                    IconButton(
+                      tooltip: t.onS3
+                          ? 'Download'
+                          : finalizing
+                          ? 'Available once the upload to S3 finishes'
+                          : 'Available once the download finishes',
+                      icon: const Icon(Icons.download_rounded, size: 20),
+                      color: CineseedColors.creamMuted,
+                      onPressed: t.onS3
+                          ? () => downloadFile(context, ref, t.hashString)
+                          : null,
+                    ),
+                  ],
                   // In-app playback: live HLS off S3 once the file is there,
                   // else off the local copy while it downloads.
                   IconButton(
                     tooltip: t.playable
-                        ? 'Play in browser'
+                        ? multi
+                              ? 'Choose a video'
+                              : 'Play in browser'
                         : stranded
                         ? 'Files missing — re-download to recover'
                         : 'Available once the first pieces are in',

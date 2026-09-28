@@ -33,6 +33,16 @@ class TorrentFileInfo {
   /// Basename — the picker lists episodes, not paths.
   String get displayName => name.split('/').last;
 
+  /// The folder holding the file below the torrent's own top-level directory
+  /// (`Season 1` for `Show/Season 1/Show.S01E01.mkv`), '' at the top level.
+  /// The picker groups files by it (see [TorrentFiles.byFolder]).
+  String get folder {
+    final parts = name.split('/');
+    return parts.length <= 2
+        ? ''
+        : parts.sublist(1, parts.length - 1).join('/');
+  }
+
   double get percentDone => length > 0 ? bytesCompleted / length : 0;
 
   /// Sequential download fills the torrent front-to-back, so any downloaded
@@ -75,6 +85,26 @@ class TorrentFiles {
   /// A single-video torrent needs no picker — the caller plays [files].first
   /// straight away, exactly as before multi-file support existed.
   bool get isSingleFile => files.length <= 1;
+
+  /// [files] by [TorrentFileInfo.folder] (a complete-series pack's seasons),
+  /// folders in the order their first file appears, files in torrent order.
+  /// A folder holding a single file groups nothing — releases that give every
+  /// episode its own folder — so that file joins its parent folder's group.
+  Map<String, List<TorrentFileInfo>> get byFolder {
+    int inside(String folder) => files
+        .where((f) => f.folder == folder || f.folder.startsWith('$folder/'))
+        .length;
+    final groups = <String, List<TorrentFileInfo>>{};
+    for (final f in files) {
+      var folder = f.folder;
+      while (folder.isNotEmpty && inside(folder) == 1) {
+        final cut = folder.lastIndexOf('/');
+        folder = cut < 0 ? '' : folder.substring(0, cut);
+      }
+      groups.putIfAbsent(folder, () => []).add(f);
+    }
+    return groups;
+  }
 
   factory TorrentFiles.fromJson(Map<String, dynamic> json) => TorrentFiles(
     name: json['name'] as String? ?? '',

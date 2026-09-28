@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cineseed_shared/cineseed_shared.dart';
 
+import 'stream_id.dart';
 import 'torrent_client.dart';
 
 /// Minimal Transmission JSON-RPC client.
@@ -102,12 +103,30 @@ class TransmissionClient implements TorrentClient {
         'downloadedEver',
         'totalSize',
         'isFinished',
+        'files',
       ],
     });
     final torrents = (args['torrents'] as List? ?? [])
         .cast<Map<String, dynamic>>();
-    return torrents.map(TorrentState.fromJson).toList();
+    return [
+      for (final t in torrents)
+        TorrentState.fromJson(
+          t,
+        ).copyWith(videoCount: videoFileIndices(_files(t)).length),
+    ];
   }
+
+  static List<TorrentFile> _files(Map<String, dynamic> torrent) =>
+      (torrent['files'] as List? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (f) => TorrentFile(
+              f['name'] as String? ?? '',
+              (f['length'] as num?)?.toInt() ?? 0,
+              (f['bytesCompleted'] as num?)?.toInt() ?? 0,
+            ),
+          )
+          .toList();
 
   @override
   Future<List<TorrentFile>> files(String hash) async {
@@ -118,17 +137,7 @@ class TransmissionClient implements TorrentClient {
     final torrents = (args['torrents'] as List? ?? [])
         .cast<Map<String, dynamic>>();
     if (torrents.isEmpty) return const [];
-    final files = (torrents.first['files'] as List? ?? [])
-        .cast<Map<String, dynamic>>();
-    return files
-        .map(
-          (f) => TorrentFile(
-            f['name'] as String? ?? '',
-            (f['length'] as num?)?.toInt() ?? 0,
-            (f['bytesCompleted'] as num?)?.toInt() ?? 0,
-          ),
-        )
-        .toList();
+    return _files(torrents.first);
   }
 
   @override
@@ -141,22 +150,12 @@ class TransmissionClient implements TorrentClient {
         .cast<Map<String, dynamic>>();
     if (torrents.isEmpty) return null;
     final t = torrents.first;
-    final files = (t['files'] as List? ?? [])
-        .cast<Map<String, dynamic>>()
-        .map(
-          (f) => TorrentFile(
-            f['name'] as String? ?? '',
-            (f['length'] as num?)?.toInt() ?? 0,
-            (f['bytesCompleted'] as num?)?.toInt() ?? 0,
-          ),
-        )
-        .toList();
     return TorrentStreamInfo(
       name: t['name'] as String? ?? '',
       downloadDir: t['downloadDir'] as String? ?? '',
       percentDone: (t['percentDone'] as num?)?.toDouble() ?? 0,
       isFinished: t['isFinished'] as bool? ?? false,
-      files: files,
+      files: _files(t),
     );
   }
 

@@ -11,9 +11,11 @@ import 'package:video_player/video_player.dart';
 import 'package:video_player_web_hls/video_player_web_hls.dart';
 import 'package:web/web.dart' as web;
 
+import '../../core/api_client.dart';
 import '../../core/debug_log.dart';
 import '../../core/providers.dart';
 import 'cast_button.dart';
+import 'watched_button.dart';
 
 class PlayerScreen extends HookConsumerWidget {
   final String hash;
@@ -286,6 +288,25 @@ class PlayerScreen extends HookConsumerWidget {
       return () => vc.removeListener(listener);
     }, [video.value]);
 
+    // Marks the video watched once playback reaches 90 % — the credits, give
+    // or take. Once only: unmarking it by hand afterwards sticks.
+    useEffect(() {
+      final vc = video.value;
+      if (vc == null) return null;
+      void listener() {
+        final v = vc.value;
+        final total = v.duration.inMilliseconds;
+        if (total <= 0 || v.position.inMilliseconds < total * 0.9) return;
+        vc.removeListener(listener);
+        ref
+            .read(watchedProvider.notifier)
+            .set(ApiClient.streamId(hash, fileIndex), watched: true);
+      }
+
+      vc.addListener(listener);
+      return () => vc.removeListener(listener);
+    }, [video.value]);
+
     // Sync Chewie's fullscreen state with the browser's native Fullscreen API.
     // Without this, the fullscreen button only expands the Flutter window area;
     // it doesn't trigger the OS-level browser fullscreen. We also listen for the
@@ -388,6 +409,7 @@ class PlayerScreen extends HookConsumerWidget {
                 maxLines: 1,
               ),
               actions: [
+                WatchedButton(id: ApiClient.streamId(hash, fileIndex)),
                 if (chewie.value != null)
                   CastButton(
                     hash: hash,
