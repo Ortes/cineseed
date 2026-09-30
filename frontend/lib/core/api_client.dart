@@ -30,6 +30,18 @@ class AudioTrackInfo {
   }
 }
 
+/// The tracker returned no results but a page of its own (e.g. an outage
+/// notice); [body] is that page, shown to the user as-is.
+class TrackerError implements Exception {
+  const TrackerError(this.message, this.body);
+
+  final String message;
+  final String body;
+
+  @override
+  String toString() => message;
+}
+
 /// Thin HTTP wrapper around the Cineseed backend.
 class ApiClient {
   final Dio _dio;
@@ -50,8 +62,19 @@ class ApiClient {
   static String streamId(String hash, int? fileIndex) =>
       fileIndex == null ? hash : '$hash.$fileIndex';
 
+  /// Throws [TrackerError] when the tracker answered with something other than
+  /// results (the backend's 502).
   Future<List<TorrentResult>> search(String query) async {
-    final res = await _dio.get('/api/search', queryParameters: {'q': query});
+    final Response<dynamic> res;
+    try {
+      res = await _dio.get('/api/search', queryParameters: {'q': query});
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (e.response?.statusCode == 502 && data is Map) {
+        throw TrackerError(data['error'] as String, data['body'] as String);
+      }
+      rethrow;
+    }
     return (res.data as List)
         .map((e) => TorrentResult.fromJson((e as Map).cast<String, dynamic>()))
         .toList();

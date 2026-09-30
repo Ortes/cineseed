@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' show HttpDate;
 
 import 'package:http/http.dart' as http;
@@ -32,10 +33,19 @@ class TorznabTracker implements TrackerConnector {
   Future<List<TorrentResult>> search(String query, {String? type}) async {
     final res = await _http.get(_api({'t': 'search', 'q': query}));
     if (res.statusCode != 200) {
-      throw Exception('Tracker search failed: HTTP ${res.statusCode}');
+      throw TrackerException(
+        'Tracker search failed: HTTP ${res.statusCode}',
+        _page(res),
+      );
     }
-    return _parseRss(res.body);
+    return _parseRss(res);
   }
+
+  /// The body as the user should read it. `res.body` falls back to Latin-1
+  /// when Content-Type has no charset (C411's outage page is `text/html`,
+  /// UTF-8 per its `<meta charset>`), which garbles every accent.
+  static String _page(http.Response res) =>
+      utf8.decode(res.bodyBytes, allowMalformed: true);
 
   @override
   Future<List<int>> fetchTorrent(String infoHash) async {
@@ -46,8 +56,25 @@ class TorznabTracker implements TrackerConnector {
     return res.bodyBytes;
   }
 
-  List<TorrentResult> _parseRss(String body) {
-    final doc = XmlDocument.parse(body);
+  List<TorrentResult> _parseRss(http.Response res) {
+    final XmlDocument doc;
+    try {
+      doc = XmlDocument.parse(res.body);
+    } on XmlException catch (e) {
+      throw TrackerException(
+        'Tracker did not return a Torznab feed ($e)',
+        _page(res),
+      );
+    }
+    // Torznab reports failures as <error code=".." description=".."/>.
+    final error = doc.rootElement;
+    if (error.localName == 'error') {
+      throw TrackerException(
+        'Tracker error ${error.getAttribute('code')}: '
+        '${error.getAttribute('description')}',
+        _page(res),
+      );
+    }
     final results = <TorrentResult>[];
 
     for (final item in doc.findAllElements('item')) {

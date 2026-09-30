@@ -6,6 +6,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ## [Unreleased]
 
 ### Added
+- When the tracker answers a search with a page instead of results (C411's "Incident en
+  cours" outage page), the Search tab shows its message and that page in a sandboxed
+  iframe instead of a raw 500 (`GET /api/search` → 502 `{error, body}`).
 - Torrents with several videos (season packs): the file list groups files by folder (a
   folder holding a single file joins its parent), and the library card shows the video
   count and opens that list instead of copying, casting or downloading one of its files

@@ -5,8 +5,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api_client.dart';
 import '../../core/providers.dart';
 import 'release_row.dart';
+import 'tracker_error_view.dart';
 
 /// Search a movie → list of *films* (one card per TMDB id). Clicking a film
 /// opens [FilmScreen] with every release for that film. Releases without a
@@ -49,7 +51,9 @@ class SearchView extends HookConsumerWidget {
         Expanded(
           child: results.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
+            error: (e, _) => e is TrackerError
+                ? TrackerErrorView(error: e)
+                : Center(child: Text('Error: $e')),
             data: (list) => _FilmsList(releases: list),
           ),
         ),

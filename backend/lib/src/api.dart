@@ -112,11 +112,15 @@ String _contentTypeFor(String name) {
   r.get('/search', (Request req) async {
     final q = req.url.queryParameters['q'] ?? '';
     if (q.trim().isEmpty) return _json({'error': 'missing q'}, 400);
-    final results = await tracker.search(
-      q,
-      type: req.url.queryParameters['type'],
-    );
-    return _json(results.map((e) => e.toJson()).toList());
+    try {
+      final results = await tracker.search(
+        q,
+        type: req.url.queryParameters['type'],
+      );
+      return _json(results.map((e) => e.toJson()).toList());
+    } on TrackerException catch (e) {
+      return _json({'error': e.message, 'body': e.body}, 502);
+    }
   });
 
   // Suggestions: the films released last on C411, rebuilt daily; the frontend

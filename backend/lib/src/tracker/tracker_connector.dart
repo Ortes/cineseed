@@ -9,3 +9,16 @@ abstract interface class TrackerConnector {
   /// Fetch the raw `.torrent` bytes for an infoHash (Torznab `t=get`).
   Future<List<int>> fetchTorrent(String infoHash);
 }
+
+/// The tracker answered, but not with results — typically an outage page
+/// (C411 serves an HTML "Incident en cours" with HTTP 200). [body] is what it
+/// returned, so the user can read it.
+class TrackerException implements Exception {
+  final String message;
+  final String body;
+
+  TrackerException(this.message, this.body);
+
+  @override
+  String toString() => 'TrackerException: $message';
+}
