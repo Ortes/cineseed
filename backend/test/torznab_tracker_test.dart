@@ -41,7 +41,7 @@ void main() {
         isA<TrackerException>().having(
           (e) => e.message,
           'message',
-          'Tracker error 100: Bad key',
+          'The tracker refused the search: Bad key',
         ),
       ),
     );

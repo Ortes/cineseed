@@ -34,12 +34,16 @@ class TorznabTracker implements TrackerConnector {
     final res = await _http.get(_api({'t': 'search', 'q': query}));
     if (res.statusCode != 200) {
       throw TrackerException(
-        'Tracker search failed: HTTP ${res.statusCode}',
+        _unavailable,
+        'HTTP ${res.statusCode}',
         _page(res),
       );
     }
     return _parseRss(res);
   }
+
+  static const _unavailable =
+      "The tracker isn't answering searches right now. Here's what it says:";
 
   /// The body as the user should read it. `res.body` falls back to Latin-1
   /// when Content-Type has no charset (C411's outage page is `text/html`,
@@ -62,7 +66,8 @@ class TorznabTracker implements TrackerConnector {
       doc = XmlDocument.parse(res.body);
     } on XmlException catch (e) {
       throw TrackerException(
-        'Tracker did not return a Torznab feed ($e)',
+        _unavailable,
+        'not a Torznab feed: $e',
         _page(res),
       );
     }
@@ -70,8 +75,8 @@ class TorznabTracker implements TrackerConnector {
     final error = doc.rootElement;
     if (error.localName == 'error') {
       throw TrackerException(
-        'Tracker error ${error.getAttribute('code')}: '
-        '${error.getAttribute('description')}',
+        'The tracker refused the search: ${error.getAttribute('description')}',
+        'Torznab error ${error.getAttribute('code')}',
         _page(res),
       );
     }

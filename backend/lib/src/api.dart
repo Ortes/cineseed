@@ -119,6 +119,7 @@ String _contentTypeFor(String name) {
       );
       return _json(results.map((e) => e.toJson()).toList());
     } on TrackerException catch (e) {
+      stderr.writeln('search "$q": $e');
       return _json({'error': e.message, 'body': e.body}, 502);
     }
   });

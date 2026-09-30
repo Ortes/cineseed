@@ -14,11 +14,15 @@ abstract interface class TrackerConnector {
 /// (C411 serves an HTML "Incident en cours" with HTTP 200). [body] is what it
 /// returned, so the user can read it.
 class TrackerException implements Exception {
+  /// Plain-language sentence for the user.
   final String message;
+
+  /// The technical reason, for the log.
+  final String cause;
   final String body;
 
-  TrackerException(this.message, this.body);
+  TrackerException(this.message, this.cause, this.body);
 
   @override
-  String toString() => 'TrackerException: $message';
+  String toString() => 'TrackerException: $cause';
 }
