@@ -6,6 +6,9 @@ abstract interface class TrackerConnector {
   /// Full-text search → list of results carrying the `infoHash`.
   Future<List<TorrentResult>> search(String query, {String? type});
 
+  /// Every release of one TMDB title, however its release names are spelled.
+  Future<List<TorrentResult>> releases(int tmdbId, MediaType type);
+
   /// Fetch the raw `.torrent` bytes for an infoHash (Torznab `t=get`).
   Future<List<int>> fetchTorrent(String infoHash);
 }

@@ -124,6 +124,22 @@ String _contentTypeFor(String name) {
     }
   });
 
+  // Every release of one TMDB title (the film page).
+  r.get('/releases/<type>/<id>', (Request req, String type, String id) async {
+    final n = int.tryParse(id);
+    final mediaType = MediaType.fromJson(type);
+    if (n == null || mediaType == MediaType.other) {
+      return _json({'error': 'bad type or id'}, 400);
+    }
+    try {
+      final results = await tracker.releases(n, mediaType);
+      return _json(results.map((e) => e.toJson()).toList());
+    } on TrackerException catch (e) {
+      stderr.writeln('releases $type/$id: $e');
+      return _json({'error': e.message, 'body': e.body}, 502);
+    }
+  });
+
   // Suggestions: the films released last on C411, rebuilt daily; the frontend
   // sorts them. 404 without C411 or TMDB.
   r.get('/suggestions', (Request req) async {

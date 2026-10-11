@@ -73,6 +73,12 @@ class SearchController extends AsyncNotifier<List<TorrentResult>> {
   }
 }
 
+/// Every release of one title ([ApiClient.releases]), for the film page.
+final releasesProvider =
+    FutureProvider.family<List<TorrentResult>, ({MediaType type, int id})>(
+      (ref, key) => ref.watch(apiClientProvider).releases(key.type, key.id),
+    );
+
 /// Suggestions tab ([ApiClient.suggestions]): fetched once per page-load; the
 /// backend rebuilds the list daily.
 final suggestionsProvider = FutureProvider<List<FilmSuggestion>>(

@@ -11,6 +11,7 @@ import 'tracker_connector.dart';
 /// exposing a Torznab feed directly.
 ///
 /// - search:   `GET {base}/api?t=search&q=<q>&apikey=<key>` → RSS
+/// - releases: `GET {base}/api?t=movie|tvsearch&tmdbid=<id>&apikey=<key>` → RSS
 /// - download: `GET {base}/api?t=get&id=<infoHash>&apikey=<key>` → .torrent bytes
 ///   (`t=get` returns a ready-to-add .torrent — no cookie, no CAPTCHA, fully
 ///   automatable.)
@@ -29,9 +30,40 @@ class TorznabTracker implements TrackerConnector {
     '$baseUrl/api',
   ).replace(queryParameters: {...params, 'apikey': apiKey});
 
+  /// Torznab's maximum page size (C411's default is 25, max 100).
+  static const _pageSize = 100;
+
   @override
-  Future<List<TorrentResult>> search(String query, {String? type}) async {
-    final res = await _http.get(_api({'t': 'search', 'q': query}));
+  Future<List<TorrentResult>> search(String query, {String? type}) =>
+      _query({'t': 'search', 'q': query, 'limit': '$_pageSize'});
+
+  @override
+  Future<List<TorrentResult>> releases(int tmdbId, MediaType type) async {
+    final t = switch (type) {
+      MediaType.tv => 'tvsearch',
+      _ => 'movie',
+    };
+    // A series can have more releases than one page holds: page through until
+    // a page brings nothing new.
+    final byHash = <String, TorrentResult>{};
+    for (var offset = 0; ; offset += _pageSize) {
+      final page = await _query({
+        't': t,
+        'tmdbid': '$tmdbId',
+        'limit': '$_pageSize',
+        'offset': '$offset',
+      });
+      final before = byHash.length;
+      for (final r in page) {
+        byHash[r.infoHash] = r;
+      }
+      if (page.length < _pageSize || byHash.length == before) break;
+    }
+    return byHash.values.toList();
+  }
+
+  Future<List<TorrentResult>> _query(Map<String, String> params) async {
+    final res = await _http.get(_api(params));
     if (res.statusCode != 200) {
       throw TrackerException(
         _unavailable,

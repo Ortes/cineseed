@@ -64,10 +64,20 @@ class ApiClient {
 
   /// Throws [TrackerError] when the tracker answered with something other than
   /// results (the backend's 502).
-  Future<List<TorrentResult>> search(String query) async {
+  Future<List<TorrentResult>> search(String query) =>
+      _results('/api/search', {'q': query});
+
+  /// Every release of one TMDB title on the tracker, whatever was searched.
+  Future<List<TorrentResult>> releases(MediaType type, int tmdbId) =>
+      _results('/api/releases/${type.toJson()}/$tmdbId');
+
+  Future<List<TorrentResult>> _results(
+    String path, [
+    Map<String, dynamic>? query,
+  ]) async {
     final Response<dynamic> res;
     try {
-      res = await _dio.get('/api/search', queryParameters: {'q': query});
+      res = await _dio.get(path, queryParameters: query);
     } on DioException catch (e) {
       final data = e.response?.data;
       if (e.response?.statusCode == 502 && data is Map) {

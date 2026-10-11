@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cineseed_backend/src/tracker/torznab_tracker.dart';
+import 'package:cineseed_shared/cineseed_shared.dart';
 import 'package:cineseed_backend/src/tracker/tracker_connector.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -45,5 +46,26 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('releases pages through every result of a TMDB id', () async {
+    String feed(int from, int count) =>
+        '<rss><channel>${[for (var i = from; i < from + count; i++) '<item><title>t$i</title><guid>h$i</guid></item>'].join()}</channel></rss>';
+    final requested = <Map<String, String>>[];
+    final tracker = TorznabTracker(
+      baseUrl: 'https://tracker.test',
+      apiKey: 'k',
+      client: MockClient((req) async {
+        requested.add(req.url.queryParameters);
+        final offset = int.parse(req.url.queryParameters['offset']!);
+        return http.Response(feed(offset, offset == 0 ? 100 : 12), 200);
+      }),
+    );
+    final results = await tracker.releases(1399, MediaType.tv);
+    expect(results, hasLength(112));
+    expect(requested.map((q) => (q['t'], q['tmdbid'], q['offset'])), [
+      ('tvsearch', '1399', '0'),
+      ('tvsearch', '1399', '100'),
+    ]);
   });
 }

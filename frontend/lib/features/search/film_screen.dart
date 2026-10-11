@@ -9,9 +9,9 @@ import 'format_helpers.dart';
 import 'release_row.dart';
 import 'search_sort.dart';
 
-/// Detail page for one film: lists every release in the current search or the
-/// suggestions whose `tmdbId` matches. Pulled from the live providers so we
-/// don't need to re-issue the query.
+/// Detail page for one film: every release the tracker has for its `tmdbId`,
+/// shown at once from the current search and the suggestions, then completed
+/// by [releasesProvider] (a broad search only holds some of them).
 class FilmScreen extends HookConsumerWidget {
   const FilmScreen({super.key, required this.mediaType, required this.tmdbId});
 
@@ -36,9 +36,11 @@ class FilmScreen extends HookConsumerWidget {
     final suggested = ref.exists(suggestionsProvider)
         ? ref.watch(suggestionsProvider).value
         : null;
+    final fetched = ref.watch(releasesProvider((type: mediaType, id: tmdbId)));
     final releases = {
       for (final r in [
         ...?ref.watch(searchProvider).value,
+        ...?fetched.value,
         ...?suggested?.expand((s) => s.releases),
       ])
         if (r.tmdbId == tmdbId && r.mediaType == mediaType) r.infoHash: r,
@@ -76,12 +78,15 @@ class FilmScreen extends HookConsumerWidget {
         ),
       ),
       body: releases.isEmpty
-          ? const Center(
-              child: Text(
-                'No releases for this film in the current search.\n'
-                'Go back and search again.',
-                textAlign: TextAlign.center,
-              ),
+          ? Center(
+              child: fetched.isLoading
+                  ? const CircularProgressIndicator()
+                  : Text(
+                      fetched.hasError
+                          ? 'Could not load the releases: ${fetched.error}'
+                          : 'No releases for this film on the tracker.',
+                      textAlign: TextAlign.center,
+                    ),
             )
           : Column(
               children: [
