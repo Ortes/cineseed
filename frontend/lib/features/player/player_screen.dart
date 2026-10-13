@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:js_interop';
 
 import 'package:cineseed_shared/cineseed_shared.dart';
-import 'package:chewie/chewie.dart';
+import 'package:chewie/chewie.dart' hide CastButton;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -138,8 +138,8 @@ class PlayerScreen extends HookConsumerWidget {
               // visibleForTesting annotation.
               // ignore: invalid_use_of_visible_for_testing_member
               final id = vc!.playerId;
-              // SubtitleTrack.id is the stringified hls.js track index; -1 = off.
-              final order = track == null ? -1 : int.parse(track.id);
+              // SubtitleTrack.id is the hls.js track index; -1 = off.
+              final order = track == null ? -1 : track.id as int;
               DebugLog.log(
                 'ACTION',
                 'subtitle track → $order '
@@ -152,8 +152,8 @@ class PlayerScreen extends HookConsumerWidget {
               // reloading the master with `?a=<order>` in place (hls.js
               // loadSource), restoring the current position. Rebuffers briefly.
               // selectAudioTrack already owns activeAudioTrackId; the id is the
-              // stringified backend order.
-              final order = int.parse(track.id);
+              // backend order.
+              final order = track.id as int;
               // ignore: invalid_use_of_visible_for_testing_member
               final id = vc!.playerId;
               final pos = vc!.value.position.inMilliseconds / 1000.0;
@@ -179,7 +179,7 @@ class PlayerScreen extends HookConsumerWidget {
               cc!.setSubtitleTracks([
                 for (final t in hls.getSubtitleTracks(id))
                   SubtitleTrack(
-                    id: t.id.toString(),
+                    id: t.id,
                     label: t.label ?? t.language ?? 'Track ${t.id + 1}',
                     language: t.language,
                   ),
@@ -208,15 +208,11 @@ class PlayerScreen extends HookConsumerWidget {
               (t) => t.isDefault,
               orElse: () => tracks.first,
             );
+            cc!.activeAudioTrackId = def.order;
             cc!.setAudioTracks([
               for (final t in tracks)
-                AudioTrack(
-                  id: t.order.toString(),
-                  label: t.label,
-                  language: t.language,
-                  isDefault: t.isDefault,
-                ),
-            ], activeId: def.order.toString());
+                AudioTrack(id: t.order, label: t.label, language: t.language),
+            ]);
           }
           if (cancelled) {
             tracksSub?.cancel();
