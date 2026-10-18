@@ -9,6 +9,7 @@ import 'dart:typed_data';
 ///    segment's absolute start (boundary × track timescale).
 ///  * [readTimescale] / [hevcCodecString] — read the track timescale and build
 ///    the RFC 6381 codec string from the init segment for the master playlist.
+///  * [hevcTrack] / [sampleRanges] — locate HEVC samples for `CraRelabeler`.
 class Mp4Boxes {
   /// Rewrites the `moof>traf>tfdt` baseMediaDecodeTime in [seg] (in place).
   /// Keeps the existing version/width (v1=64-bit, v0=32-bit). No-op if absent.
@@ -140,6 +141,92 @@ class Mp4Boxes {
     return sb.toString();
   }
 
+  /// The HEVC video track of an init segment: its `track_ID` and the byte
+  /// length of the NAL unit size prefix in its samples. Null if there is none.
+  static ({int trackId, int nalLengthSize})? hevcTrack(Uint8List init) {
+    final moov = _findIn(init, 0, init.length, _moov);
+    if (moov == null) return null;
+    for (final trak in _children(init, moov.contentStart, moov.end, _trak)) {
+      final tkhd = _findIn(init, trak.contentStart, trak.end, _tkhd);
+      final stsd = _findPath(init, trak.contentStart, trak.end, [
+        _mdia,
+        _minf,
+        _stbl,
+        _stsd,
+      ]);
+      if (tkhd == null || stsd == null) continue;
+      final p = stsd.contentStart + 8; // first sample entry
+      if (p + 8 > stsd.end) continue;
+      final type = String.fromCharCodes(init, p + 4, p + 8);
+      if (type != 'hvc1' && type != 'hev1') continue;
+      final hvcc = _findIn(init, p + 8 + 78, p + _u32(init, p), _hvcC);
+      if (hvcc == null || hvcc.contentStart + 22 > hvcc.end) continue;
+      // tkhd v0: [ver+flags=4][create=4][modify=4][track_ID]; v1: 8-byte times.
+      final idOff =
+          tkhd.contentStart + (init[tkhd.contentStart] == 1 ? 20 : 12);
+      return (
+        trackId: _u32(init, idOff),
+        nalLengthSize: (init[hvcc.contentStart + 21] & 3) + 1,
+      );
+    }
+    return null;
+  }
+
+  /// The `(offset, size)` of each sample of [trackId] described by the `moof`
+  /// box [moof], as offsets in the segment file, where the box starts at
+  /// [moofOffset]. Empty if the box has no such track.
+  static List<(int, int)> sampleRanges(
+    Uint8List moof,
+    int moofOffset,
+    int trackId,
+  ) {
+    final out = <(int, int)>[];
+    final box = _findIn(moof, 0, moof.length, _moof);
+    if (box == null) return out;
+    final bd = ByteData.sublistView(moof);
+    for (final traf in _children(moof, box.contentStart, box.end, _traf)) {
+      final tfhd = _findIn(moof, traf.contentStart, traf.end, _tfhd);
+      if (tfhd == null || _u32(moof, tfhd.contentStart + 4) != trackId) {
+        continue;
+      }
+      final hf = _u32(moof, tfhd.contentStart) & 0xffffff;
+      var o = tfhd.contentStart + 8;
+      var base = moofOffset; // default-base-is-moof, or the first traf
+      if (hf & 0x1 != 0) {
+        base = bd.getUint64(o);
+        o += 8;
+      }
+      if (hf & 0x2 != 0) o += 4;
+      if (hf & 0x8 != 0) o += 4;
+      final defaultSize = hf & 0x10 != 0 ? _u32(moof, o) : null;
+      var next = base;
+      for (final trun in _children(moof, traf.contentStart, traf.end, _trun)) {
+        final tf = _u32(moof, trun.contentStart) & 0xffffff;
+        final count = _u32(moof, trun.contentStart + 4);
+        var p = trun.contentStart + 8;
+        if (tf & 0x1 != 0) {
+          next = base + bd.getInt32(p);
+          p += 4;
+        }
+        if (tf & 0x4 != 0) p += 4;
+        for (var i = 0; i < count; i++) {
+          if (tf & 0x100 != 0) p += 4;
+          var size = defaultSize;
+          if (tf & 0x200 != 0) {
+            size = _u32(moof, p);
+            p += 4;
+          }
+          if (tf & 0x400 != 0) p += 4;
+          if (tf & 0x800 != 0) p += 4;
+          if (size == null) return out;
+          out.add((next, size));
+          next += size;
+        }
+      }
+    }
+    return out;
+  }
+
   // --- box walking ---
 
   static const _moov = 'moov';
@@ -153,6 +240,9 @@ class Mp4Boxes {
   static const _moof = 'moof';
   static const _traf = 'traf';
   static const _tfdt = 'tfdt';
+  static const _tkhd = 'tkhd';
+  static const _tfhd = 'tfhd';
+  static const _trun = 'trun';
 
   static (int, int)? _findTfdt(Uint8List d) {
     final moof = _findIn(d, 0, d.length, _moof);
@@ -166,8 +256,11 @@ class Mp4Boxes {
   }
 
   /// Finds a nested box by a path of fourcc types from the top level.
-  static _Box? _find(Uint8List d, List<String> path) {
-    var start = 0, end = d.length;
+  static _Box? _find(Uint8List d, List<String> path) =>
+      _findPath(d, 0, d.length, path);
+
+  /// Finds a nested box by a path of fourcc types within [start, end).
+  static _Box? _findPath(Uint8List d, int start, int end, List<String> path) {
     _Box? box;
     for (final type in path) {
       box = _findIn(d, start, end, type);
@@ -180,6 +273,19 @@ class Mp4Boxes {
 
   /// Finds the first child box of [type] within [start, end).
   static _Box? _findIn(Uint8List d, int start, int end, String type) {
+    for (final box in _children(d, start, end, type)) {
+      return box;
+    }
+    return null;
+  }
+
+  /// The child boxes of [type] within [start, end), in order.
+  static Iterable<_Box> _children(
+    Uint8List d,
+    int start,
+    int end,
+    String type,
+  ) sync* {
     var i = start;
     while (i + 8 <= end && i + 8 <= d.length) {
       var size = _u32(d, i);
@@ -193,12 +299,11 @@ class Mp4Boxes {
       }
       final t = String.fromCharCodes(d, i + 4, i + 8);
       if (t == type) {
-        return _Box(contentStart: i + headerLen, end: i + size);
+        yield _Box(contentStart: i + headerLen, end: i + size);
       }
       if (size <= 0) break;
       i += size;
     }
-    return null;
   }
 
   static int _u32(Uint8List d, int o) =>

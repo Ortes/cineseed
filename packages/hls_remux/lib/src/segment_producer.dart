@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'cra_relabel.dart';
 import 'log.dart';
 import 'mp4_boxes.dart';
 import 'segment_ref.dart';
@@ -108,6 +109,12 @@ class SegmentProducer {
   bool _tfdtChecked = false;
   int _tfdtCorrection = 0; // subtracted from each segment's tfdt before serving
 
+  // Every file passes through the CraRelabeler, in order from the run's first,
+  // before it can be served (see _relabel).
+  CraRelabeler? _relabeler;
+  bool _relabelerChecked = false;
+  int _relabelNext = 0;
+
   final StringBuffer _stderr = StringBuffer();
 
   SegmentProducer._({
@@ -191,6 +198,7 @@ class SegmentProducer {
     // missing pictures (VideoToolbox -17694). After the warm-up the run is
     // indistinguishable from a continuous one.
     final runStart = _runStart();
+    _relabelNext = runStart;
     // Seek to the MIDPOINT of the run's first segment, not its start boundary.
     // `-ss <t> -noaccurate_seek` lands on the keyframe at-or-before t; seeking
     // to the start boundary can round onto the PREVIOUS keyframe (verified:
@@ -314,22 +322,26 @@ class SegmentProducer {
     final pruneBelow = config.debug
         ? -1
         : max(startSegment, _clientSegment - config.retainBehindSegments);
+    final files = <int, File>{};
     try {
       for (final e in _tempDir.listSync()) {
         if (e is! File) continue;
         final name = e.uri.pathSegments.last;
         if (!name.endsWith('.m4s')) continue;
         final idx = int.tryParse(name.substring(0, name.length - 4));
-        if (idx == null) continue;
-        if (idx > maxIdx) maxIdx = idx;
-        if (idx < pruneBelow) {
-          try {
-            e.deleteSync();
-          } catch (_) {}
-        }
+        if (idx != null) files[idx] = e;
       }
     } catch (_) {
       return; // temp dir vanished mid-scan (kill race) — next tick is a no-op
+    }
+    _relabel(files);
+    for (final MapEntry(key: idx, value: f) in files.entries) {
+      if (idx > maxIdx) maxIdx = idx;
+      if (idx < pruneBelow) {
+        try {
+          f.deleteSync();
+        } catch (_) {}
+      }
     }
     if (pruneBelow > _floor) _floor = pruneBelow;
     if (maxIdx > _highWater) {
@@ -353,6 +365,34 @@ class SegmentProducer {
       }
     }
     _checkThrottle();
+  }
+
+  /// Passes the files produced since the last scan through the [CraRelabeler],
+  /// in order, before [_scan] serves or prunes any of them. Warm-up files too:
+  /// they hold the parameter sets the first served file is compared against.
+  void _relabel(Map<int, File> files) {
+    if (files.isEmpty) return;
+    final last = files.keys.reduce(max);
+    if (last < _relabelNext) return;
+    if (!_relabelerChecked) {
+      _relabelerChecked = true; // ffmpeg writes init.mp4 before any segment
+      final init = File('${_tempDir.path}/init.mp4');
+      final track = init.existsSync()
+          ? Mp4Boxes.hevcTrack(init.readAsBytesSync())
+          : null;
+      if (track != null) {
+        _relabeler = CraRelabeler(track.trackId, track.nalLengthSize);
+      }
+    }
+    final r = _relabeler;
+    for (var i = _relabelNext; i <= last && r != null; i++) {
+      final f = files[i];
+      final n = f == null ? 0 : r.process(f);
+      if (n > 0) {
+        Log.d('vp', '$label seg$i: $n CRA→BLA (parameter sets changed)');
+      }
+    }
+    _relabelNext = last + 1;
   }
 
   /// On the first produced segment, check whether ffmpeg's tfdt matches the
@@ -473,11 +513,12 @@ class SegmentProducer {
     }
     final c = Completer<SegmentRef?>();
     _waiters.putIfAbsent(i, () => []).add(c);
-    Timer(config.segmentTimeout, () async {
-      if (!c.isCompleted) {
-        _waiters[i]?.remove(c);
-        c.complete(_segFile(i).existsSync() ? await _openAndPatch(i) : null);
-      }
+    Timer(config.segmentTimeout, () {
+      if (c.isCompleted) return;
+      // A file that landed since the last tick goes through _scan (and so
+      // _relabel) before it is served; the scan resolves this waiter if so.
+      _scan();
+      if (_waiters[i]?.remove(c) ?? false) c.complete(null);
     });
     return c.future;
   }

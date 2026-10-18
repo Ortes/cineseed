@@ -6,6 +6,7 @@
 /// transcoded.
 library;
 
+export 'src/cra_relabel.dart';
 export 'src/hls_playlists.dart';
 export 'src/hls_session.dart';
 export 'src/local_range_server.dart';
