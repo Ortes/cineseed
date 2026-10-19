@@ -48,26 +48,10 @@ class MkvCues {
     final c = client ?? http.Client();
     final owns = client == null;
     try {
-      final reader = _RangeReader(url, c);
-
-      // 1) EBML header, then Segment header → segment data start offset.
-      var head = await reader.read(0, 4096);
-      var p = 0;
-      final ebml = _readElementHeader(head, p);
-      if (ebml == null || ebml.id != _idEbmlHeader) return null;
-      p = ebml.contentStart + ebml.size; // skip EBML header content
-
-      // The Segment header may sit past the first 4 KiB if the EBML header is
-      // large; re-fetch a window anchored at p when needed.
-      if (p + 16 > head.length) {
-        head = await reader.read(p, 4096);
-        final seg = _readElementHeader(head, 0);
-        if (seg == null || seg.id != _idSegment) return null;
-        return await _parseSegment(reader, p + seg.headerLen);
-      }
-      final seg = _readElementHeader(head, p);
-      if (seg == null || seg.id != _idSegment) return null;
-      return await _parseSegment(reader, seg.contentStart);
+      final read = _RangeReader(url, c).read;
+      final segDataStart = await _segmentDataStart(read);
+      if (segDataStart == null) return null;
+      return await _parseSegment(read, segDataStart);
     } catch (_) {
       // Any parse/range failure → treat as no usable index (HLS-ineligible).
       return null;
@@ -76,67 +60,50 @@ class MkvCues {
     }
   }
 
+  /// The Cues element's byte range `[start, end)`, found the way [fetch] finds
+  /// it (SeekHead pointers). [read] may return fewer bytes than asked — only
+  /// what is downloaded so far; null when that isn't enough to locate the Cues.
+  static Future<({int start, int end})?> locate(ByteRangeReader read) async {
+    try {
+      final segDataStart = await _segmentDataStart(read);
+      if (segDataStart == null) return null;
+      final cuesPos = (await _locate(read, segDataStart)).cuesPos;
+      if (cuesPos == null) return null;
+      final el = _readElementHeader(await read(cuesPos, 16), 0);
+      if (el == null || el.id != _idCues) return null;
+      return (start: cuesPos, end: cuesPos + el.headerLen + el.size);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// EBML header, then Segment header → segment data start offset.
+  static Future<int?> _segmentDataStart(ByteRangeReader read) async {
+    final head = await read(0, 4096);
+    final ebml = _readElementHeader(head, 0);
+    if (ebml == null || ebml.id != _idEbmlHeader) return null;
+    final p = ebml.contentStart + ebml.size; // skip EBML header content
+
+    // The Segment header may sit past the first 4 KiB if the EBML header is
+    // large; re-fetch a window anchored at p when needed.
+    if (p + 16 > head.length) {
+      final seg = _readElementHeader(await read(p, 4096), 0);
+      if (seg == null || seg.id != _idSegment) return null;
+      return p + seg.headerLen;
+    }
+    final seg = _readElementHeader(head, p);
+    if (seg == null || seg.id != _idSegment) return null;
+    return seg.contentStart;
+  }
+
   static Future<MkvCues?> _parseSegment(
-    _RangeReader reader,
+    ByteRangeReader read,
     int segDataStart,
   ) async {
-    // Walk the Segment's direct children headers (cheap: only headers are read)
-    // to locate SeekHead + Info. Most mkvmerge files put SeekHead first.
-    int? cuesPos; // absolute offset of Cues element
-    int? infoPos; // absolute offset of Info element
-    int? tracksPos; // absolute offset of Tracks element
-    int? seekHeadPos2; // secondary SeekHead, followed once
-
-    // Read a generous window covering the front matter (SeekHead/Info/Tracks
-    // are small and live before the clusters).
-    final front = await reader.read(segDataStart, 256 * 1024);
-    var off = 0;
-    while (off + 12 < front.length) {
-      final el = _readElementHeader(front, off);
-      if (el == null) break;
-      final absStart = segDataStart + off;
-      if (el.id == _idSeekHead) {
-        final res = _parseSeekHead(
-          front,
-          el.contentStart,
-          el.contentStart + el.size,
-          segDataStart,
-        );
-        cuesPos ??= res.cuesPos;
-        infoPos ??= res.infoPos;
-        tracksPos ??= res.tracksPos;
-        seekHeadPos2 ??= res.seekHeadPos;
-      } else if (el.id == _idInfo) {
-        infoPos = absStart;
-      } else if (el.id == _idCues) {
-        cuesPos = absStart;
-      } else if (el.id == _idTracks) {
-        tracksPos = absStart;
-      }
-      // Stop once we've left the front matter (hit a Cluster) and know Cues.
-      if (cuesPos != null && infoPos != null && tracksPos != null) break;
-      final next = el.contentStart - segDataStart + el.size;
-      if (next <= off) break;
-      off = next;
-    }
-
-    // Follow a secondary SeekHead if the first only pointed at it.
-    if (cuesPos == null && seekHeadPos2 != null) {
-      final sh = await reader.read(seekHeadPos2, 64 * 1024);
-      final el = _readElementHeader(sh, 0);
-      if (el != null && el.id == _idSeekHead) {
-        final res = _parseSeekHead(
-          sh,
-          el.contentStart,
-          el.contentStart + el.size,
-          segDataStart,
-        );
-        cuesPos ??= res.cuesPos;
-        infoPos ??= res.infoPos;
-        tracksPos ??= res.tracksPos;
-      }
-    }
-
+    final (:cuesPos, :infoPos, :tracksPos, seekHeadPos: _) = await _locate(
+      read,
+      segDataStart,
+    );
     if (cuesPos == null) return null;
 
     // The video track number, so we keep ONLY video CuePoints. Matroska Cues
@@ -147,14 +114,14 @@ class MkvCues {
     // longer match the boundary we assign — tolerated on sequential append but
     // breaks decode on seek. Null → couldn't resolve it; fall back to all cues.
     final videoTrack = tracksPos != null
-        ? await _readVideoTrackNumber(reader, tracksPos)
+        ? await _readVideoTrackNumber(read, tracksPos)
         : null;
 
     // TimecodeScale (default 1ms) + optional Duration from Info.
     var timecodeScale = 1000000; // ns per tick
     double? durationTicks;
     if (infoPos != null) {
-      final infoBuf = await reader.read(infoPos, 64 * 1024);
+      final infoBuf = await read(infoPos, 64 * 1024);
       final info = _readElementHeader(infoBuf, 0);
       if (info != null && info.id == _idInfo) {
         var io = info.contentStart;
@@ -175,10 +142,10 @@ class MkvCues {
     }
 
     // Read the Cues element (header first for its size, then the whole thing).
-    final cuesHdrBuf = await reader.read(cuesPos, 16);
+    final cuesHdrBuf = await read(cuesPos, 16);
     final cuesEl = _readElementHeader(cuesHdrBuf, 0);
     if (cuesEl == null || cuesEl.id != _idCues) return null;
-    final cuesBuf = await reader.read(cuesPos, cuesEl.headerLen + cuesEl.size);
+    final cuesBuf = await read(cuesPos, cuesEl.headerLen + cuesEl.size);
 
     final times = <double>[];
     var co = cuesEl.headerLen; // content start within cuesBuf
@@ -236,6 +203,76 @@ class MkvCues {
     return MkvCues(times, dur);
   }
 
+  /// Where the Cues, Info and Tracks elements start (absolute offsets).
+  static Future<_SeekHeadResult> _locate(
+    ByteRangeReader read,
+    int segDataStart,
+  ) async {
+    // Walk the Segment's direct children headers (cheap: only headers are read)
+    // to locate SeekHead + Info. Most mkvmerge files put SeekHead first.
+    int? cuesPos; // absolute offset of Cues element
+    int? infoPos; // absolute offset of Info element
+    int? tracksPos; // absolute offset of Tracks element
+    int? seekHeadPos2; // secondary SeekHead, followed once
+
+    // Read a generous window covering the front matter (SeekHead/Info/Tracks
+    // are small and live before the clusters).
+    final front = await read(segDataStart, 256 * 1024);
+    var off = 0;
+    while (off + 12 < front.length) {
+      final el = _readElementHeader(front, off);
+      if (el == null) break;
+      final absStart = segDataStart + off;
+      if (el.id == _idSeekHead) {
+        final res = _parseSeekHead(
+          front,
+          el.contentStart,
+          el.contentStart + el.size,
+          segDataStart,
+        );
+        cuesPos ??= res.cuesPos;
+        infoPos ??= res.infoPos;
+        tracksPos ??= res.tracksPos;
+        seekHeadPos2 ??= res.seekHeadPos;
+      } else if (el.id == _idInfo) {
+        infoPos = absStart;
+      } else if (el.id == _idCues) {
+        cuesPos = absStart;
+      } else if (el.id == _idTracks) {
+        tracksPos = absStart;
+      }
+      // Stop once we've left the front matter (hit a Cluster) and know Cues.
+      if (cuesPos != null && infoPos != null && tracksPos != null) break;
+      final next = el.contentStart - segDataStart + el.size;
+      if (next <= off) break;
+      off = next;
+    }
+
+    // Follow a secondary SeekHead if the first only pointed at it.
+    if (cuesPos == null && seekHeadPos2 != null) {
+      final sh = await read(seekHeadPos2, 64 * 1024);
+      final el = _readElementHeader(sh, 0);
+      if (el != null && el.id == _idSeekHead) {
+        final res = _parseSeekHead(
+          sh,
+          el.contentStart,
+          el.contentStart + el.size,
+          segDataStart,
+        );
+        cuesPos ??= res.cuesPos;
+        infoPos ??= res.infoPos;
+        tracksPos ??= res.tracksPos;
+      }
+    }
+
+    return (
+      cuesPos: cuesPos,
+      infoPos: infoPos,
+      seekHeadPos: seekHeadPos2,
+      tracksPos: tracksPos,
+    );
+  }
+
   static _SeekHeadResult _parseSeekHead(
     Uint8List b,
     int start,
@@ -276,18 +313,23 @@ class MkvCues {
       if (next <= off) break;
       off = next;
     }
-    return _SeekHeadResult(cuesPos, infoPos, seekHeadPos, tracksPos);
+    return (
+      cuesPos: cuesPos,
+      infoPos: infoPos,
+      seekHeadPos: seekHeadPos,
+      tracksPos: tracksPos,
+    );
   }
 
   /// Reads the Tracks element at [tracksPos] and returns the TrackNumber of the
   /// first video track (TrackType == 1), or null if none/unparseable. The
   /// number is what CuePoints reference via CueTrack.
   static Future<int?> _readVideoTrackNumber(
-    _RangeReader reader,
+    ByteRangeReader read,
     int tracksPos,
   ) async {
     try {
-      final buf = await reader.read(tracksPos, 256 * 1024);
+      final buf = await read(tracksPos, 256 * 1024);
       final tracks = _readElementHeader(buf, 0);
       if (tracks == null || tracks.id != _idTracks) return null;
       var o = tracks.contentStart;
@@ -392,18 +434,15 @@ class _Element {
   });
 }
 
-class _SeekHeadResult {
-  final int? cuesPos;
-  final int? infoPos;
-  final int? seekHeadPos;
-  final int? tracksPos;
-  const _SeekHeadResult(
-    this.cuesPos,
-    this.infoPos,
-    this.seekHeadPos,
-    this.tracksPos,
-  );
-}
+typedef _SeekHeadResult = ({
+  int? cuesPos,
+  int? infoPos,
+  int? seekHeadPos,
+  int? tracksPos,
+});
+
+/// Reads [length] bytes at [offset] — or fewer, at the end of what is there.
+typedef ByteRangeReader = Future<Uint8List> Function(int offset, int length);
 
 /// Fetches byte ranges from a URL via HTTP `Range` requests.
 class _RangeReader {

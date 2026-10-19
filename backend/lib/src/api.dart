@@ -165,10 +165,11 @@ String _contentTypeFor(String name) {
   });
 
   // Which of [indices] (files of [hash]) the in-app player can start on from
-  // the local copy: it has its first and last pieces (see
-  // [TorrentLocalFile.hasEdges]). Transmission fetches those before anything
-  // else, so this holds seconds after a download starts. One bitfield fetch
-  // for the whole torrent, none once it is complete.
+  // the local copy: it has its header and its Cues (see
+  // [TorrentLocalFile.hasIndex]). Transmission fetches the first and last
+  // pieces before anything else, so this usually holds seconds after a download
+  // starts — unless the Cues reach back past a short last piece. One bitfield
+  // fetch for the whole torrent, none once it is complete.
   Future<Set<int>> startableLocally(
     String hash,
     TorrentStreamInfo info,
@@ -187,7 +188,7 @@ String _contentTypeFor(String name) {
         incompleteDir: incompleteDir,
         remoteDir: offload?.postUploadDir,
       );
-      if (local != null && (pieces == null || local.hasEdges(pieces))) {
+      if (local != null && (pieces == null || await local.hasIndex(pieces))) {
         startable.add(i);
       }
     }

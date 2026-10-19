@@ -61,13 +61,17 @@ void main() {
     expect(await f.readable(50000), 0); // past the end
   });
 
-  test('hasEdges wants the first and last pieces of the file', () async {
+  test('hasIndex wants the first piece and every piece of the Cues', () async {
+    // Cues at file bytes 30 000..41 999: they start in piece 2 and end in the
+    // short last piece 3 (file bytes 39 152..49 999).
+    File('${dir.path}/b.mkv.part').writeAsBytesSync(_mkv(50000, 30000, 12000));
     final f = find(_Pieces({}, 4));
-    Future<bool> edges(Set<int> have) async =>
-        f.hasEdges((await _Pieces(have, 4).pieces('h'))!);
-    expect(await edges({0, 3}), isTrue);
-    expect(await edges({0, 1, 2}), isFalse); // no last piece
-    expect(await edges({1, 2, 3}), isFalse); // no first piece
+    Future<bool> index(Set<int> have) async =>
+        f.hasIndex((await _Pieces(have, 4).pieces('h'))!);
+    expect(await index({0, 2, 3}), isTrue);
+    expect(await index({0, 3}), isFalse); // first and last only: Cues cut
+    expect(await index({0, 2}), isFalse); // Cues' tail missing
+    expect(await index({1, 2, 3}), isFalse); // no header
   });
 
   test('once every piece is in, no more bitfield fetches', () async {
@@ -101,4 +105,33 @@ void main() {
       isNull,
     );
   });
+}
+
+/// A [length]-byte MKV whose SeekHead points at a [cuesSize]-byte Cues element
+/// at [cuesAt]; everything else is zeros.
+Uint8List _mkv(int length, int cuesAt, int cuesSize) {
+  final b = Uint8List(length);
+  final header = <int>[
+    0x1A, 0x45, 0xDF, 0xA3, 0x80, // EBML header, empty
+    0x18, 0x53, 0x80, 0x67, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  ];
+  final seekPos =
+      cuesAt - header.length; // header ends where Segment data starts
+  final seek = <int>[
+    0x53, 0xAB, 0x84, 0x1C, 0x53, 0xBB, 0x6B, // SeekID: Cues
+    0x53, 0xAC, 0x84, // SeekPosition, relative to the Segment data
+    (seekPos >> 24) & 0xFF, (seekPos >> 16) & 0xFF, (seekPos >> 8) & 0xFF,
+    seekPos & 0xFF,
+  ];
+  final seekHead = <int>[
+    0x11, 0x4D, 0x9B, 0x74, 0x80 | (seek.length + 2), // SeekHead
+    0x4D, 0xBB, 0x80 | seek.length, ...seek, // Seek
+  ];
+  b.setAll(0, [...header, ...seekHead]);
+  final size = cuesSize - 8; // 4-byte id + 4-byte size
+  b.setAll(cuesAt, [
+    0x1C, 0x53, 0xBB, 0x6B, // Cues
+    0x10 | (size >> 24), (size >> 16) & 0xFF, (size >> 8) & 0xFF, size & 0xFF,
+  ]);
+  return b;
 }

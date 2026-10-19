@@ -75,8 +75,9 @@ Torrents are added with **sequential download** so pieces fill front-to-back, an
 a **plain local disk** — never a network/FUSE mount. `/api/stream/:hash` returns the presigned
 S3 URL once the object is on S3; until then (and always without S3) it serves the local file
 via `/api/file/:hash` over HTTP Range (206), reading straight from the local disk.
-Transmission 4.1 fetches each file's first and last piece first, so the MKV index (Cues, always
-in the last piece) is there within seconds.
+Transmission 4.1 fetches each file's first and last piece first, so the MKV index (Cues, at
+the end) is usually there within seconds. Not always: a short last piece can leave the start of
+the Cues in the piece before it, fetched near the end — Play stays off until the Cues are in.
 
 The in-app player (HLS) also starts mid-download: `TorrentMediaResolver` hands ffmpeg the local
 copy through `LocalRangeServer`, which only serves pieces Transmission has verified (its

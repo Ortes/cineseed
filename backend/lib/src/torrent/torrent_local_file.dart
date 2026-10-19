@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:hls_remux/hls_remux.dart';
 
@@ -71,11 +72,26 @@ class TorrentLocalFile implements LocalFile {
   Future<TorrentPieces?>? _fetching;
   bool _complete = false; // latched: no more RPCs once every piece is in
 
-  /// Whether [p] has this file's first and last pieces: all that building its
-  /// HLS session reads (the header, and the Cues mkvmerge writes at the end).
-  bool hasEdges(TorrentPieces p) =>
-      p.has(_offset ~/ p.pieceSize) &&
-      p.has((_offset + length - 1) ~/ p.pieceSize);
+  /// Whether [p] has everything building this file's HLS session reads before
+  /// it can wait for pieces: the first piece (header, SeekHead) and the Cues,
+  /// wherever the SeekHead puts them — not always within the last piece, which
+  /// can be only a few KB long.
+  Future<bool> hasIndex(TorrentPieces p) async {
+    if (!p.has(_offset ~/ p.pieceSize)) return false;
+    final cues = await MkvCues.locate((offset, length) async {
+      final n = min(length, _readableIn(p, offset));
+      final path = this.path();
+      if (n <= 0 || path == null) return Uint8List(0);
+      final f = await File(path).open();
+      try {
+        await f.setPosition(offset);
+        return await f.read(n);
+      } finally {
+        await f.close();
+      }
+    });
+    return cues != null && _readableIn(p, cues.start) >= cues.end - cues.start;
+  }
 
   @override
   String? path() {
@@ -91,6 +107,12 @@ class TorrentLocalFile implements LocalFile {
     if (_complete) return length - offset;
     final pieces = await _fresh();
     if (pieces == null) return 0; // torrent removed: nothing verified to read
+    return _readableIn(pieces, offset);
+  }
+
+  /// How many bytes from [offset] on are in verified pieces of [pieces].
+  int _readableIn(TorrentPieces pieces, int offset) {
+    if (offset >= length) return 0;
     final size = pieces.pieceSize;
     final last = (_offset + length - 1) ~/ size;
     var i = (_offset + offset) ~/ size;
