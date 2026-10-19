@@ -13,6 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   folder holding a single file joins its parent), and the library card shows the video
   count and opens that list instead of copying, casting or downloading one of its files
   (`videoCount` on `GET /api/torrents`).
+- Continue where you left off: the player saves its position per video in the browser's
+  `localStorage` and resumes there on the next open (forgotten past 90 %).
 - Watched marks, kept in the browser's `localStorage`: set automatically at 90 % of
   playback, toggled by hand on film cards, files and in the player.
 - Suggestions tab (C411 only): this year's films on C411 (last year's too from January to

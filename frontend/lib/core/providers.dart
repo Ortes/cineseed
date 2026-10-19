@@ -54,6 +54,23 @@ class Watched extends Notifier<Set<String>> {
   }
 }
 
+/// Where each video was left off, by stream id, so reopening it resumes there.
+/// Like [Watched], kept in this browser's localStorage only.
+abstract final class PlaybackPosition {
+  static String _key(String id) => 'cineseed.position.$id';
+
+  static Duration? load(String id) {
+    final raw = web.window.localStorage.getItem(_key(id));
+    final ms = raw == null ? null : int.tryParse(raw);
+    return ms == null ? null : Duration(milliseconds: ms);
+  }
+
+  static void save(String id, Duration position) =>
+      web.window.localStorage.setItem(_key(id), '${position.inMilliseconds}');
+
+  static void clear(String id) => web.window.localStorage.removeItem(_key(id));
+}
+
 /// Search results, driven by [SearchController.search].
 final searchProvider =
     AsyncNotifierProvider<SearchController, List<TorrentResult>>(

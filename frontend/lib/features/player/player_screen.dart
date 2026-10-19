@@ -105,9 +105,14 @@ class PlayerScreen extends HookConsumerWidget {
             'initialized size=${vc!.value.size} '
                 'duration=${vc!.value.duration}',
           );
+          final resumeAt = PlaybackPosition.load(
+            ApiClient.streamId(hash, fileIndex),
+          );
+          DebugLog.log('PLAYER', 'resume at $resumeAt');
           cc = ChewieController(
             videoPlayerController: vc!,
             autoPlay: autoPlay,
+            startAt: resumeAt,
             looping: false,
             // Web: don't let Chewie push its own fullscreen route. That route
             // reparents the <video> platform view and, on exit, forces a full
@@ -297,6 +302,30 @@ class PlayerScreen extends HookConsumerWidget {
         ref
             .read(watchedProvider.notifier)
             .set(ApiClient.streamId(hash, fileIndex), watched: true);
+      }
+
+      vc.addListener(listener);
+      return () => vc.removeListener(listener);
+    }, [video.value]);
+
+    // Remembers where playback is, so reopening the video resumes there. Saved
+    // whenever it moves 5 s from the last save (playback or a seek); forgotten
+    // past 90 % — a finished video starts over.
+    useEffect(() {
+      final vc = video.value;
+      if (vc == null) return null;
+      final id = ApiClient.streamId(hash, fileIndex);
+      var saved = vc.value.position;
+      void listener() {
+        final v = vc.value;
+        final total = v.duration.inMilliseconds;
+        if (total > 0 && v.position.inMilliseconds >= total * 0.9) {
+          PlaybackPosition.clear(id);
+          saved = v.position;
+        } else if ((v.position - saved).abs() >= const Duration(seconds: 5)) {
+          PlaybackPosition.save(id, v.position);
+          saved = v.position;
+        }
       }
 
       vc.addListener(listener);
