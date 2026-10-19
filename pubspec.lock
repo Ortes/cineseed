@@ -74,12 +74,13 @@ packages:
     source: hosted
     version: "2.0.4"
   chewie:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: chewie
-      sha256: "56b6641693ddd72f0cd54ddfedf4f3e9390e6d7b7b22dc2503b7e6ad91476f7f"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "178e9dfedc6e8b6f372760d23860584445a57dc0"
+      resolved-ref: "178e9dfedc6e8b6f372760d23860584445a57dc0"
+      url: "https://github.com/Fullphysio/chewie.git"
+    source: git
     version: "1.17.2"
   cli_config:
     dependency: transitive

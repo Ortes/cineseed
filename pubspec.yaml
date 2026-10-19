@@ -18,11 +18,12 @@ workspace:
 # given entry for a `path:` dependency on a local checkout of the fork.
 # A package may be overridden only once per workspace, so all overrides live here.
 dependency_overrides:
-  # Our chewie fork, kept for unreleased changes; every PR so far is upstream.
-  # chewie:
-  #   git:
-  #     url: https://github.com/Ortes/chewie.git
-  #     ref: <commit>
+  # Upstream master + fluttercommunity/chewie#973 (desktop bar's right-hand
+  # controls pinned right). Back to pub.dev once it's released.
+  chewie:
+    git:
+      url: https://github.com/Fullphysio/chewie.git
+      ref: 178e9dfedc6e8b6f372760d23860584445a57dc0
   video_player_web_hls:
     git:
       url: https://github.com/Ortes/video_player_web_hls.git
