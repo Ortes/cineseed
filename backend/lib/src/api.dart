@@ -164,20 +164,20 @@ String _contentTypeFor(String name) {
     );
   });
 
-  // Which of [indices] (files of [hash]) the in-app player can start on from
-  // the local copy: it has its header and its Cues (see
-  // [TorrentLocalFile.hasIndex]). Transmission fetches the first and last
-  // pieces before anything else, so this usually holds seconds after a download
-  // starts — unless the Cues reach back past a short last piece. One bitfield
-  // fetch for the whole torrent, none once it is complete.
-  Future<Set<int>> startableLocally(
+  // For each of [indices] (files of [hash]) on the local disk, how far the
+  // in-app player is from starting on it there: its header and its Cues (see
+  // [TorrentLocalFile.startProgress]). Transmission fetches the first and last
+  // pieces before anything else, so this is usually ready seconds after a
+  // download starts — unless the Cues reach back past a short last piece. One
+  // bitfield fetch for the whole torrent, none once it is complete.
+  Future<Map<int, StartProgress>> localStart(
     String hash,
     TorrentStreamInfo info,
     Iterable<int> indices,
   ) async {
     final pieces = info.percentDone >= 1.0 ? null : await client.pieces(hash);
     if (info.percentDone < 1.0 && pieces == null) return {};
-    final startable = <int>{};
+    final progress = <int, StartProgress>{};
     for (final i in indices) {
       final local = TorrentLocalFile.find(
         client,
@@ -188,17 +188,32 @@ String _contentTypeFor(String name) {
         incompleteDir: incompleteDir,
         remoteDir: offload?.postUploadDir,
       );
-      if (local != null && (pieces == null || await local.hasIndex(pieces))) {
-        startable.add(i);
-      }
+      if (local == null) continue;
+      progress[i] = pieces == null
+          ? (have: 0, needed: 0, ready: true)
+          : await local.startProgress(pieces);
     }
-    return startable;
+    return progress;
   }
 
-  Future<bool> playableLocally(String id, TorrentStreamInfo info) async {
+  // Which of [indices] the in-app player can start on from the local copy.
+  Future<Set<int>> startableLocally(
+    String hash,
+    TorrentStreamInfo info,
+    Iterable<int> indices,
+  ) async => {
+    for (final MapEntry(:key, :value) in (await localStart(
+      hash,
+      info,
+      indices,
+    )).entries)
+      if (value.ready) key,
+  };
+
+  Future<StartProgress?> localStartOf(String id, TorrentStreamInfo info) async {
     final sid = StreamId.parse(id)!;
     final index = sid.resolve(info.files)!;
-    return (await startableLocally(sid.hash, info, [index])).isNotEmpty;
+    return (await localStart(sid.hash, info, [index]))[index];
   }
 
   // The library's Play gate. A finished torrent plays from S3 or its local
@@ -247,7 +262,7 @@ String _contentTypeFor(String name) {
     }
     final finished = info.percentDone >= 1.0;
     final videos = videoFileIndices(info.files);
-    final local = await startableLocally(hash, info, videos);
+    final local = await localStart(hash, info, videos);
     final files = <TorrentFileInfo>[];
     for (final i in videos) {
       final f = info.files[i];
@@ -260,7 +275,8 @@ String _contentTypeFor(String name) {
           length: f.length,
           bytesCompleted: f.bytesCompleted,
           onS3: onS3,
-          playable: onS3 || local.contains(i),
+          playable: onS3 || (local[i]?.ready ?? false),
+          startProgress: _fraction(local[i]),
         ),
       );
     }
@@ -362,7 +378,7 @@ String _contentTypeFor(String name) {
     // object actually exists; otherwise keep serving the local copy.
     //
     // `ready` is the in-app (HLS) playback gate: on S3, or else enough of the
-    // local copy is there to build the HLS session (see [playableLocally]).
+    // local copy is there to build the HLS session (see [localStart]).
     final finished = info.percentDone >= 1.0;
     if (offload != null && finished && await offload.fileOnS3(file.name)) {
       final url = await offload.signer.presign(file.name); // name == S3 key
@@ -378,10 +394,12 @@ String _contentTypeFor(String name) {
     // both same-origin prod and the cross-origin local dev frontend). The id is
     // carried through verbatim so the local route serves the same file.
     final localUrl = req.requestedUri.replace(path: '/api/file/$id').toString();
+    final start = await localStartOf(id, info);
     return _json({
       'url': localUrl,
       'mode': 'local',
-      'ready': await playableLocally(id, info),
+      'ready': start?.ready ?? false,
+      'startProgress': _fraction(start),
       'percentDone': info.percentDone,
     });
   });
@@ -687,3 +705,8 @@ Response _json(Object data, [int status = 200, String? cache]) => Response(
   body: jsonEncode(data),
   headers: {'Content-Type': 'application/json', 'Cache-Control': ?cache},
 );
+
+/// [p] as 0..1 for the player's "preparing playback" bar; null once there is
+/// nothing left to wait for, or nothing is known yet (no local file).
+double? _fraction(StartProgress? p) =>
+    p == null || p.ready || p.needed == 0 ? null : p.have / p.needed;

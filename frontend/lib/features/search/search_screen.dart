@@ -653,10 +653,13 @@ class _OrphansSection extends ConsumerWidget {
 
   Future<void> _add(BuildContext context, WidgetRef ref, String hash) async {
     final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
     try {
       await ref.read(apiClientProvider).addTorrent(hash);
       ref.invalidate(libraryProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Added to library')));
+      ref.read(userInitiatedPlaybackProvider.notifier).mark();
+      router.go('/watch/${hash.toLowerCase()}');
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Failed: $e')));
     }

@@ -61,17 +61,32 @@ void main() {
     expect(await f.readable(50000), 0); // past the end
   });
 
-  test('hasIndex wants the first piece and every piece of the Cues', () async {
-    // Cues at file bytes 30 000..41 999: they start in piece 2 and end in the
-    // short last piece 3 (file bytes 39 152..49 999).
-    File('${dir.path}/b.mkv.part').writeAsBytesSync(_mkv(50000, 30000, 12000));
-    final f = find(_Pieces({}, 4));
-    Future<bool> index(Set<int> have) async =>
-        f.hasIndex((await _Pieces(have, 4).pieces('h'))!);
-    expect(await index({0, 2, 3}), isTrue);
-    expect(await index({0, 3}), isFalse); // first and last only: Cues cut
-    expect(await index({0, 2}), isFalse); // Cues' tail missing
-    expect(await index({1, 2, 3}), isFalse); // no header
+  test(
+    'startProgress wants the first piece and every piece of the Cues',
+    () async {
+      // Cues at file bytes 30 000..41 999 (torrent bytes 40 000..51 999): they
+      // start in piece 2 and end in the short last piece 3.
+      File(
+        '${dir.path}/b.mkv.part',
+      ).writeAsBytesSync(_mkv(50000, 30000, 12000));
+      final f = find(_Pieces({}, 4));
+      Future<StartProgress> start(Set<int> have) async =>
+          f.startProgress((await _Pieces(have, 4).pieces('h'))!);
+      // No header yet: the Cues are assumed in the last piece.
+      expect(await start({}), (have: 0, needed: 2, ready: false));
+      expect(await start({1, 2, 3}), (have: 1, needed: 2, ready: false));
+      // Header in, Cues' own header not: their first piece is all that's known.
+      expect(await start({0, 3}), (have: 1, needed: 2, ready: false));
+      // Cues' header in: they run on into piece 3.
+      expect(await start({0, 2}), (have: 2, needed: 3, ready: false));
+      expect(await start({0, 2, 3}), (have: 3, needed: 3, ready: true));
+    },
+  );
+
+  test('startProgress wants the whole file when it has no Cues', () async {
+    final f = find(_Pieces({}, 4)); // all zeros: not an MKV
+    final p = await f.startProgress((await _Pieces({0}, 4).pieces('h'))!);
+    expect(p, (have: 1, needed: 4, ready: false));
   });
 
   test('once every piece is in, no more bitfield fetches', () async {

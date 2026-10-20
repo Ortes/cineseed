@@ -135,11 +135,10 @@ class ApiClient {
   /// the local copy is downloaded: seconds after it starts). `mode` says
   /// where `url`, the direct link for the copy-to-VLC button, points: `s3` or
   /// `local`.
-  Future<({String url, String mode, bool ready})> streamStatus(
-    String hash, {
-    int? fileIndex,
-    CancelToken? cancelToken,
-  }) async {
+  /// [startProgress]: while not [ready], how much of what the player needs to
+  /// start is downloaded, 0..1 (null when unknown).
+  Future<({String url, String mode, bool ready, double? startProgress})>
+  streamStatus(String hash, {int? fileIndex, CancelToken? cancelToken}) async {
     final res = await _dio.get(
       '/api/stream/${streamId(hash, fileIndex)}',
       cancelToken: cancelToken,
@@ -149,6 +148,7 @@ class ApiClient {
       url: (m['url'] as String?) ?? '',
       mode: (m['mode'] as String?) ?? '',
       ready: (m['ready'] as bool?) ?? false,
+      startProgress: (m['startProgress'] as num?)?.toDouble(),
     );
   }
 

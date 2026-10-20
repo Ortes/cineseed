@@ -215,7 +215,11 @@ class _FileTile extends ConsumerWidget {
               : 'Downloaded  ·  waiting for the rest of the pack'
         : file.hasBytes
         ? '${(file.percentDone * 100).toStringAsFixed(1)} %  ·  '
-              '${file.playable ? 'playable while downloading' : 'starting…'}'
+              '${file.playable
+                  ? 'playable while downloading'
+                  : file.startProgress != null
+                  ? 'preparing playback ${(file.startProgress! * 100).round()} %'
+                  : 'starting…'}'
         : 'Waiting  ·  ${fmtBytes(file.length)}';
 
     void open() {

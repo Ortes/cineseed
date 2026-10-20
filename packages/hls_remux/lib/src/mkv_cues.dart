@@ -62,14 +62,17 @@ class MkvCues {
 
   /// The Cues element's byte range `[start, end)`, found the way [fetch] finds
   /// it (SeekHead pointers). [read] may return fewer bytes than asked — only
-  /// what is downloaded so far; null when that isn't enough to locate the Cues.
-  static Future<({int start, int end})?> locate(ByteRangeReader read) async {
+  /// what is downloaded so far; null when that isn't enough to locate the Cues,
+  /// and `end` null while the Cues' own header isn't downloaded yet.
+  static Future<({int start, int? end})?> locate(ByteRangeReader read) async {
     try {
       final segDataStart = await _segmentDataStart(read);
       if (segDataStart == null) return null;
       final cuesPos = (await _locate(read, segDataStart)).cuesPos;
       if (cuesPos == null) return null;
-      final el = _readElementHeader(await read(cuesPos, 16), 0);
+      final head = await read(cuesPos, 16);
+      final el = _readElementHeader(head, 0);
+      if (el == null && head.length < 16) return (start: cuesPos, end: null);
       if (el == null || el.id != _idCues) return null;
       return (start: cuesPos, end: cuesPos + el.headerLen + el.size);
     } catch (_) {

@@ -14,6 +14,8 @@ import 'package:web/web.dart' as web;
 import '../../core/api_client.dart';
 import '../../core/debug_log.dart';
 import '../../core/providers.dart';
+import '../../core/theme.dart';
+import '../search/format_helpers.dart';
 import 'cast_button.dart';
 import 'watched_button.dart';
 
@@ -42,6 +44,7 @@ class PlayerScreen extends HookConsumerWidget {
     final chewie = useState<ChewieController?>(null);
     final error = useState<Object?>(null);
     final downloading = useState(false);
+    final startProgress = useState<double?>(null);
     // Whether we're presenting fullscreen. Mirrors the Chewie controller's
     // flag, but as Flutter state so the layout (full-bleed, no AppBar) rebuilds.
     final fullscreen = useState(false);
@@ -77,7 +80,7 @@ class PlayerScreen extends HookConsumerWidget {
         try {
           // In-app playback goes through live HLS, which can start once the
           // backend says `ready`: on S3, or while downloading as soon as the
-          // file's first and last pieces are in (seconds). Poll until then.
+          // file's header and Cues are in (usually seconds). Poll until then.
           final api = ref.read(apiClientProvider);
           while (true) {
             final status = await api.streamStatus(
@@ -92,6 +95,7 @@ class PlayerScreen extends HookConsumerWidget {
             );
             if (cancelled) return;
             downloading.value = !status.ready;
+            startProgress.value = status.startProgress;
             if (status.ready) break;
             await Future<void>.delayed(const Duration(seconds: 2));
             if (cancelled) return;
@@ -372,31 +376,49 @@ class PlayerScreen extends HookConsumerWidget {
     }, [chewie.value]);
 
     final library = ref.watch(libraryProvider);
+    final torrent = library.asData?.value.firstWhere(
+      (t) => t.hashString.toLowerCase() == hash.toLowerCase(),
+      orElse: () => const TorrentState(hashString: '', name: ''),
+    );
     // The episode's own name when one was picked; otherwise the torrent's.
-    final heading =
-        title ??
-        library.asData?.value
-            .firstWhere(
-              (t) => t.hashString.toLowerCase() == hash.toLowerCase(),
-              orElse: () => const TorrentState(hashString: '', name: ''),
-            )
-            .name ??
-        '';
+    final heading = title ?? torrent?.name ?? '';
 
     Widget body() {
       if (downloading.value) {
-        return const Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text(
-                'Waiting for the first pieces of the file…',
-                textAlign: TextAlign.center,
-              ),
-            ],
+        final p = startProgress.value;
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  p == null
+                      ? 'Preparing playback…'
+                      : 'Preparing playback  ·  ${(p * 100).round()} %',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(value: p, minHeight: 4),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  torrent == null || torrent.hashString.isEmpty
+                      ? ''
+                      : '${fmtBytes(torrent.rateDownload)}/s  ·  '
+                            '${torrent.peersConnected} '
+                            '${torrent.peersConnected == 1 ? 'peer' : 'peers'}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: CineseedColors.creamMuted,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       }
@@ -414,8 +436,14 @@ class PlayerScreen extends HookConsumerWidget {
       }
       if (chewie.value == null) return const CircularProgressIndicator();
       final ratio = video.value!.value.aspectRatio;
+      final screen = MediaQuery.sizeOf(context);
       return AspectRatio(
-        aspectRatio: ratio == 0 ? 16 / 9 : ratio,
+        // Fullscreen: fill the screen. Chewie letterboxes the picture itself
+        // and lays its controls over its whole area, so they snap to the
+        // bottom of the screen instead of sitting on the picture.
+        aspectRatio: fullscreen.value
+            ? screen.width / screen.height
+            : (ratio == 0 ? 16 / 9 : ratio),
         // The GlobalKey keeps this Chewie (and its <video> platform view)
         // alive across the AppBar show/hide on fullscreen toggle.
         child: Chewie(key: playerKey, controller: chewie.value!),

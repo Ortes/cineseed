@@ -21,6 +21,11 @@ class TorrentFileInfo {
   /// [TorrentState.playable]).
   final bool playable;
 
+  /// While the file downloads and can't play yet: how much of what the player
+  /// needs to start is in, 0..1 (coarse — counted in pieces, and it can step
+  /// back once the file reveals where its index is). Null otherwise.
+  final double? startProgress;
+
   const TorrentFileInfo({
     required this.index,
     required this.name,
@@ -28,6 +33,7 @@ class TorrentFileInfo {
     this.bytesCompleted = 0,
     this.onS3 = false,
     this.playable = false,
+    this.startProgress,
   });
 
   /// Basename — the picker lists episodes, not paths.
@@ -57,6 +63,7 @@ class TorrentFileInfo {
         bytesCompleted: (json['bytesCompleted'] as num?)?.toInt() ?? 0,
         onS3: json['onS3'] as bool? ?? false,
         playable: json['playable'] as bool? ?? false,
+        startProgress: (json['startProgress'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -66,6 +73,7 @@ class TorrentFileInfo {
     'bytesCompleted': bytesCompleted,
     'onS3': onS3,
     'playable': playable,
+    'startProgress': ?startProgress,
   };
 }
 

@@ -99,6 +99,7 @@ class TransmissionClient implements TorrentClient {
         'eta',
         'rateDownload',
         'rateUpload',
+        'peersConnected',
         'uploadedEver',
         'downloadedEver',
         'totalSize',

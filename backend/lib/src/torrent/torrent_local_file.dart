@@ -7,6 +7,10 @@ import 'package:hls_remux/hls_remux.dart';
 import 'local_file.dart';
 import 'torrent_client.dart';
 
+/// Pieces in / pieces needed before the in-app player can start on a file
+/// still downloading, and whether it can (see [TorrentLocalFile.startProgress]).
+typedef StartProgress = ({int have, int needed, bool ready});
+
 /// A torrent's file on the local download disk, read while it downloads. Only
 /// pieces Transmission has verified are readable: with sequential download it
 /// writes a piece to disk before reporting it. The file may be renamed from
@@ -72,25 +76,56 @@ class TorrentLocalFile implements LocalFile {
   Future<TorrentPieces?>? _fetching;
   bool _complete = false; // latched: no more RPCs once every piece is in
 
-  /// Whether [p] has everything building this file's HLS session reads before
-  /// it can wait for pieces: the first piece (header, SeekHead) and the Cues,
-  /// wherever the SeekHead puts them — not always within the last piece, which
-  /// can be only a few KB long.
-  Future<bool> hasIndex(TorrentPieces p) async {
-    if (!p.has(_offset ~/ p.pieceSize)) return false;
-    final cues = await MkvCues.locate((offset, length) async {
-      final n = min(length, _readableIn(p, offset));
-      final path = this.path();
-      if (n <= 0 || path == null) return Uint8List(0);
-      final f = await File(path).open();
-      try {
-        await f.setPosition(offset);
-        return await f.read(n);
-      } finally {
-        await f.close();
-      }
-    });
-    return cues != null && _readableIn(p, cues.start) >= cues.end - cues.start;
+  /// How far [p] is from everything building this file's HLS session reads
+  /// before it can wait for pieces: the first piece (header, SeekHead) and the
+  /// Cues, wherever the SeekHead puts them — not always within the last piece,
+  /// which can be only a few KB long. Counted in pieces. Until the first piece
+  /// is in, the Cues are taken to be in the last piece, where muxers put them;
+  /// until their own header is in, in the piece they start in. So [needed] can
+  /// grow as the file reveals more; [ready] holds only once it is exact. A file
+  /// whose Cues can't be located at all only plays once complete: then every
+  /// piece of it is needed.
+  Future<StartProgress> startProgress(TorrentPieces p) async {
+    final size = p.pieceSize;
+    final first = _offset ~/ size;
+    final last = (_offset + length - 1) ~/ size;
+    final cues = p.has(first)
+        ? await MkvCues.locate((offset, length) async {
+            final n = min(length, _readableIn(p, offset));
+            final path = this.path();
+            if (n <= 0 || path == null) return Uint8List(0);
+            final f = await File(path).open();
+            try {
+              await f.setPosition(offset);
+              return await f.read(n);
+            } finally {
+              await f.close();
+            }
+          })
+        : null;
+    final Iterable<int> needed;
+    if (!p.has(first)) {
+      needed = {first, last};
+    } else if (cues == null) {
+      needed = [for (var i = first; i <= last; i++) i];
+    } else {
+      final end = cues.end ?? cues.start + 1;
+      needed = {
+        first,
+        for (
+          var i = (_offset + cues.start) ~/ size;
+          i <= (_offset + end - 1) ~/ size;
+          i++
+        )
+          i,
+      };
+    }
+    final have = needed.where(p.has).length;
+    return (
+      have: have,
+      needed: needed.length,
+      ready: cues?.end != null && have == needed.length,
+    );
   }
 
   @override

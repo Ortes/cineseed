@@ -8,6 +8,7 @@ class TorrentState {
   final int eta; // seconds, -1 if unknown
   final int rateDownload; // bytes/s
   final int rateUpload; // bytes/s
+  final int peersConnected;
   final int uploadedEver; // bytes sent to peers since the torrent was added
   final int downloadedEver; // bytes fetched from peers since it was added
   final int totalSize; // bytes of the (wanted) content
@@ -49,6 +50,7 @@ class TorrentState {
     this.eta = -1,
     this.rateDownload = 0,
     this.rateUpload = 0,
+    this.peersConnected = 0,
     this.uploadedEver = 0,
     this.downloadedEver = 0,
     this.totalSize = 0,
@@ -93,6 +95,7 @@ class TorrentState {
     eta: eta,
     rateDownload: rateDownload,
     rateUpload: rateUpload,
+    peersConnected: peersConnected,
     uploadedEver: uploadedEver,
     downloadedEver: downloadedEver,
     totalSize: totalSize,
@@ -112,6 +115,7 @@ class TorrentState {
     eta: (json['eta'] as num?)?.toInt() ?? -1,
     rateDownload: (json['rateDownload'] as num?)?.toInt() ?? 0,
     rateUpload: (json['rateUpload'] as num?)?.toInt() ?? 0,
+    peersConnected: (json['peersConnected'] as num?)?.toInt() ?? 0,
     uploadedEver: (json['uploadedEver'] as num?)?.toInt() ?? 0,
     downloadedEver: (json['downloadedEver'] as num?)?.toInt() ?? 0,
     totalSize: (json['totalSize'] as num?)?.toInt() ?? 0,
@@ -131,6 +135,7 @@ class TorrentState {
     'eta': eta,
     'rateDownload': rateDownload,
     'rateUpload': rateUpload,
+    'peersConnected': peersConnected,
     'uploadedEver': uploadedEver,
     'downloadedEver': downloadedEver,
     'totalSize': totalSize,
