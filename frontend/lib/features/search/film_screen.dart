@@ -66,7 +66,10 @@ class FilmScreen extends HookConsumerWidget {
         );
         // Straight onto its page: the player starts there as soon as it can.
         // The Add tap is the gesture that lets it autoplay.
+        // Swap this page's history entry for the library first, so browser
+        // Back from the player lands in the library.
         ref.read(userInitiatedPlaybackProvider.notifier).mark();
+        if (context.mounted) Router.neglect(context, () => router.go('/'));
         router.go('/watch/${infoHash.toLowerCase()}');
       } catch (e) {
         messenger.showSnackBar(SnackBar(content: Text('Failed: $e')));

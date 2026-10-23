@@ -659,6 +659,7 @@ class _OrphansSection extends ConsumerWidget {
       ref.invalidate(libraryProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Added to library')));
       ref.read(userInitiatedPlaybackProvider.notifier).mark();
+      if (context.mounted) Router.neglect(context, () => router.go('/'));
       router.go('/watch/${hash.toLowerCase()}');
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Failed: $e')));
