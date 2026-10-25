@@ -123,11 +123,11 @@ class PlayerScreen extends HookConsumerWidget {
             // hls.js reload + rebuffer. Instead the player stays mounted in
             // place and we drive the browser Fullscreen API + layout ourselves.
             disableFullScreenRoute: true,
-            // Subtitles 30% larger than Chewie's default (18 → 23.4). Only the
-            // size is overridden — colour stays inherited from the surrounding
+            // Subtitles 1.6× Chewie's default (18 → 28.8). Only the size is
+            // overridden — colour stays inherited from the surrounding
             // DefaultTextStyle, and the box/alignment/markup defaults are kept.
             subtitleStyle: const SubtitleStyle(
-              textStyle: TextStyle(fontSize: 24),
+              textStyle: TextStyle(fontSize: 28.8),
             ),
             errorBuilder: (context, errorMessage) => Padding(
               padding: const EdgeInsets.all(24),
