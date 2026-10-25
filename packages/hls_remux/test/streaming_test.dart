@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:hls_remux/hls_remux.dart';
 import 'package:test/test.dart';
 
@@ -11,6 +13,8 @@ HlsSession _sessionWith(List<AudioTrack> audio) => HlsSession(
     duration: 100,
   ),
   keyframes: const [0, 6, 12],
+  cues: const MkvCues([0, 6, 12], 100),
+  subtitleBytes: (_, _) async => Uint8List(0),
   boundaries: const [0, 6, 12],
   producerBoundaries: const [0, 6, 12],
   groupStart: const [0, 1, 2],
@@ -161,44 +165,6 @@ void main() {
       expect(S3RangeProxy.parseRange('bytes=1000-1001', 1000), isNull);
       expect(S3RangeProxy.parseRange('bytes=abc', 1000), isNull);
       expect(S3RangeProxy.parseRange('bytes=500-100', 1000), isNull);
-    });
-  });
-
-  group('SegmentGenerator.trimPartialCue', () {
-    // One complete cue, then a second block cut at every offset — whatever the
-    // wall-clock kill lands on must still parse as WebVTT.
-    const full =
-        'WEBVTT\n\n'
-        '05:00.466 --> 05:01.795\n<i>End of manifest.</i>\n\n'
-        '05:04.899 --> 05:09.705\nI can\'t be\nthe only person here.\n';
-
-    test('keeps a complete body untouched', () {
-      expect(SegmentGenerator.trimPartialCue(full), full);
-    });
-
-    test('drops a cue cut mid-block, keeping the complete ones', () {
-      for (var cut = full.indexOf('05:04'); cut < full.length; cut++) {
-        final trimmed = SegmentGenerator.trimPartialCue(full.substring(0, cut));
-        expect(
-          trimmed,
-          startsWith('WEBVTT\n\n05:00.466 --> 05:01.795\n'),
-          reason: 'cut at $cut',
-        );
-        // Either the partial block is gone, or it is a whole cue: a timing
-        // line plus at least one complete text line.
-        final blocks = trimmed.split('\n\n');
-        for (final b in blocks.skip(1).where((b) => b.isNotEmpty)) {
-          expect(
-            b,
-            matches(RegExp(r'-->[^\n]*\n(?:[^\n]+\n?)+$')),
-            reason: 'cut at $cut',
-          );
-        }
-      }
-    });
-
-    test('header-only body (gap window) is left as is', () {
-      expect(SegmentGenerator.trimPartialCue('WEBVTT\n\n'), 'WEBVTT\n\n');
     });
   });
 }

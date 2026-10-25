@@ -23,6 +23,13 @@ class HlsSession {
   /// All keyframe timestamps (cue points), ascending.
   final List<double> keyframes;
 
+  /// The file's Cues index: subtitle windows are read from it.
+  final MkvCues cues;
+
+  /// Reads the file's bytes directly, for subtitle blocks: small scattered
+  /// reads that must not go through the range proxy's chunk cache.
+  final ByteRangeReader subtitleBytes;
+
   /// PLAYLIST segment boundaries: length = segmentCount + 1, last = duration.
   /// Keyframe-aligned, but GROUPED to a minimum duration (see [groupBoundaries])
   /// so no playlist entry is shorter than the muxed audio interleave lag —
@@ -86,6 +93,8 @@ class HlsSession {
     required this.url,
     required this.probe,
     required this.keyframes,
+    required this.cues,
+    required this.subtitleBytes,
     required this.boundaries,
     required this.producerBoundaries,
     required this.groupStart,
@@ -301,6 +310,15 @@ class HlsSessionManager {
                 )))
             .register(id, file, fallback: () => _remoteUrl(id)),
     };
+    // Subtitle blocks: straight from S3, or from the local file until it is
+    // freed (its fallback then registers the S3 source with the proxy).
+    final ByteRangeReader subtitleBytes = switch (source) {
+      HttpMediaSource() => (o, n) => proxy.readUpstream(id, o, n),
+      FileMediaSource() =>
+        (o, n) async =>
+            await localFiles!.read(id, o, n) ??
+            await proxy.readUpstream(id, o, n),
+    };
 
     // probe + Cues are independent reads → run concurrently. Both also warm the
     // proxy's header/index chunks that every segment ffmpeg re-reads.
@@ -328,6 +346,8 @@ class HlsSessionManager {
       url: url,
       probe: probe,
       keyframes: cues.keyframeTimes,
+      cues: cues,
+      subtitleBytes: subtitleBytes,
       boundaries: boundaries,
       producerBoundaries: producerBoundaries,
       groupStart: groupStart,

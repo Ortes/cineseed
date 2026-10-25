@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
+
 import 'log.dart';
 import 'hls_session.dart';
+import 'mkv_cues.dart';
+import 'mkv_subtitles.dart';
 import 'mp4_boxes.dart';
 import 'producer_manager.dart';
 import 'segment_producer.dart';
@@ -23,30 +26,27 @@ import 'transcode_pool.dart';
 /// playback is gapless. Switching audio language restarts the producer at a new
 /// track (a brief rebuffer; an acceptable trade for guaranteed sync). The
 /// served init comes from the producer's own `init.mp4` so it matches the
-/// segments exactly. SUBTITLE windows stay separate (text, no sync concern) and
-/// are still built with the ephemeral muxer below; [videoInit] is kept only to
-/// derive the master playlist's video CODECS string and the video timescale.
+/// segments exactly. SUBTITLE windows stay separate (text, no sync concern):
+/// they are read straight from the MKV. [videoInit] is kept only to derive the
+/// master playlist's video CODECS string and the video timescale.
 class SegmentGenerator {
   final TranscodePool pool;
   final ProducerManager producerManager;
   final String ffmpegBin;
   final String audioBitrate;
-  final double readMargin; // extra input seconds for subtitle windows
-  final Duration vttTimeout; // wall-clock cap on one subtitle-window extraction
-  final bool debug; // verbose ffmpeg (init/subtitle muxers) + keep temp dirs
+  final bool debug; // verbose ffmpeg (init muxer) + keep temp dirs
 
-  /// In-flight WebVTT segment extractions, keyed `s:<track>:<i>`.
-  final Map<String, Future<(String, bool)>> _vttInflight = {};
+  /// In-flight WebVTT segment reads, keyed `s:<track>:<i>`.
+  final Map<String, Future<String>> _vttInflight = {};
+
+  /// Reads the session URL for subtitle cluster scans.
+  final http.Client _http = http.Client();
 
   SegmentGenerator({
     required this.pool,
     required this.producerManager,
     this.ffmpegBin = 'ffmpeg',
     this.audioBitrate = '192k',
-    this.readMargin = 1.5,
-    // Under hls.js's default fragLoadPolicy TTFB cap (9 s) — the body is only
-    // sent once ffmpeg exits, so extraction time *is* the time to first byte.
-    this.vttTimeout = const Duration(seconds: 6),
     this.debug = false,
   });
 
@@ -165,130 +165,48 @@ class SegmentGenerator {
     return AudioGrid(sampleRate: a.sampleRate, origin: a.startTime);
   }
 
-  // --- subtitles (windowed extract, cached) ---
+  // --- subtitles (read from the MKV, cached) ---
 
-  /// Extracts the WebVTT cues for one media-aligned window (segment [i] of
-  /// subtitle track [subOrder]).
+  /// The WebVTT for segment [i] of subtitle track [subOrder], read straight
+  /// from the file's subtitle blocks (see [MkvSubtitles]). Cached per (track,
+  /// segment); concurrent requests share one read.
   ///
-  /// The `-t` bound MUST be an output option: as an *input* option it never
-  /// terminates a subtitle-only mapping, so ffmpeg demuxes the whole remote MKV
-  /// (measured: 45 s locally, ~2 min from the server, for a 10 s window — well
-  /// past hls.js's 9 s TTFB cap, so it retries a few times then drops the track
-  /// and no subtitle ever shows). On the output side the muxer stops as soon as
-  /// a cue passes the limit (~1 s), and the cues are actually windowed.
-  ///
-  /// Output-side `-t` only advances on emitted cues though, so on a *gap*
-  /// (silent intro, or a sparse/forced track) ffmpeg reads forward hunting for
-  /// the next cue — measured 10–20 s locally on the forced track. So we also
-  /// cap the wall-clock and kill it, keeping whatever was written: cues are
-  /// emitted in order, so anything inside the window is already out, and empty
-  /// is the correct answer for a gap. The kill stays under hls.js's fragment
-  /// timeout, and the output is trimmed to the last complete cue so a SIGKILL
-  /// mid-write can't hand hls.js a half-written cue.
-  ///
-  /// Cached per (track, segment) — but a *killed* run is served without being
-  /// cached: it is the one case where the answer may be short (a slow cold read
-  /// of a window that does have cues), so the next request re-runs it against a
-  /// then-warm proxy cache instead of pinning an empty segment forever.
-  /// Concurrent requests share one run.
+  /// A failed read throws rather than answer an empty segment: hls.js keeps a
+  /// 200 for good and never asks again, so a short answer would hide those
+  /// cues for the rest of the session. An error is a 5xx, which it retries.
   Future<String?> vttSegment(HlsSession s, int subOrder, int i) async {
     if (subOrder < 0 || subOrder >= s.probe.subtitles.length) return null;
     if (!s.probe.subtitles[subOrder].isText) return null;
     if (i < 0 || i >= s.segmentCount) return null;
+    final tracks = s.cues.subtitleTracks;
+    if (tracks.length != s.probe.subtitles.length) {
+      Log.w(
+        'hls',
+        '${s.id}: ${tracks.length} subtitle tracks in Tracks, '
+            '${s.probe.subtitles.length} probed — no subtitles',
+      );
+      return null;
+    }
 
     final key = 's:$subOrder:$i';
     final cached = s.vttCached(key);
     if (cached != null) return cached;
 
-    final fut = _vttInflight[key] ??= () async {
-      final start = s.segStart(i);
-      final dur = s.segDuration(i);
-      return pool.run(() => _extractVttWindow(s, subOrder, start, dur));
-    }();
-
+    final fut = _vttInflight[key] ??= MkvSubtitles.window(
+      s.cues,
+      tracks[subOrder],
+      s.segStart(i),
+      s.segEnd(i),
+      direct: s.subtitleBytes,
+      scan: httpRangeReader(s.url, _http),
+    );
     try {
-      final (text, killed) = await fut;
-      if (!killed) s.cacheVtt(key, text);
+      final text = await fut;
+      s.cacheVtt(key, text);
       return text;
     } finally {
       _vttInflight.remove(key);
     }
-  }
-
-  /// Returns the window's WebVTT and whether the wall-clock cap killed ffmpeg
-  /// (see [vttSegment]: a killed run is not cached).
-  Future<(String, bool)> _extractVttWindow(
-    HlsSession s,
-    int subOrder,
-    double start,
-    double dur,
-  ) async {
-    final proc = await Process.start(ffmpegBin, [
-      '-nostdin', '-loglevel', debug ? 'verbose' : 'error',
-      '-rw_timeout', '30000000',
-      // Reconnect when the proxy closes the connection at its maxServeBytes
-      // cap. NOT -reconnect_at_eof: the windows near the end of the file hit
-      // real EOF while the muxer waits for the cue that ends them, and treating
-      // that as an error made ffmpeg reconnect in a loop (measured 10.9 s vs
-      // 2.7 s for identical cues). The proxy always sends a Content-Range with
-      // the total size, so the input stays seekable and a short 206 is resumed
-      // with a fresh range request — the EOF retry buys nothing here.
-      '-reconnect', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '5',
-      '-ss', start.toStringAsFixed(3),
-      '-i', s.url,
-      '-map', '0:s:$subOrder',
-      // A little past the window so a boundary-straddling cue is captured;
-      // hls.js de-duplicates cues shared with the next segment. Output-side —
-      // see the doc comment: an input-side -t reads the whole file.
-      '-t', (dur + readMargin).toStringAsFixed(3),
-      // Shift cues back onto the programme timeline. `-ss` resets timestamps
-      // to 0 at the seek point; this re-adds the segment start so hls.js
-      // places cues at the right time instead of stacking every segment at 0.
-      '-output_ts_offset', start.toStringAsFixed(3),
-      // Write every cue through to the pipe as it is muxed, so the cues already
-      // past the muxer survive a SIGKILL instead of dying in the AVIO buffer.
-      '-flush_packets', '1',
-      '-f', 'webvtt', 'pipe:1',
-    ]);
-    final out = BytesBuilder(copy: false);
-    final stdoutDone = proc.stdout.forEach(out.add);
-    unawaited(proc.stderr.drain<void>());
-    var killed = false;
-    final killer = Timer(vttTimeout, () {
-      killed = true;
-      Log.d(
-        'hls',
-        's:$subOrder @${start.toStringAsFixed(1)}s vtt extract '
-            'hit ${vttTimeout.inSeconds}s cap — killing',
-      );
-      proc.kill(ProcessSignal.sigkill);
-    });
-    await proc.exitCode;
-    killer.cancel();
-    await stdoutDone;
-    final text = utf8.decode(out.takeBytes(), allowMalformed: true);
-    // Always hand back a valid body so hls.js treats a gap as loaded-empty.
-    return (
-      text.contains('WEBVTT') ? trimPartialCue(text) : 'WEBVTT\n\n',
-      killed,
-    );
-  }
-
-  /// A `-->` timing line plus at least one complete text line, at the end.
-  static final _wholeCue = RegExp(r'-->[^\n]*\n(?:[^\n]+\n)+$');
-
-  /// Drops a trailing incomplete cue block. WebVTT blocks are separated by a
-  /// blank line; a SIGKILL (or a truncated pipe) can cut one mid-write, and
-  /// hls.js throws while parsing that. The block after the last blank line is
-  /// only kept when it is already whole.
-  static String trimPartialCue(String vtt) {
-    final lastBreak = vtt.lastIndexOf('\n\n');
-    if (lastBreak < 0) return vtt;
-    final tail = vtt.substring(lastBreak + 2);
-    if (tail.isEmpty || _wholeCue.hasMatch(tail)) return vtt;
-    return vtt.substring(0, lastBreak + 2);
   }
 
   // --- helpers ---

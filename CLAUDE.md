@@ -86,6 +86,10 @@ for the next one. It reopens the file per 4 MiB chunk, so the `.part` rename and
 post-upload delete just work, and once the local copy is gone it 302s ffmpeg to the S3 proxy.
 While a file downloads, HLS routes answer 503 (hls.js retries 5xx, never 4xx).
 
+Subtitle segments (`s/<t>/<i>.vtt`) are read straight from the MKV's blocks via its Cues
+index (`MkvSubtitles`): small direct reads, never ffmpeg, nothing stored. A short or empty
+VTT served as 200 is lost for good (hls.js never re-requests), so a failed read must error.
+
 ### Upload to S3 (backend-driven, no Transmission hook)
 
 With S3 configured, the backend uploads finished files to S3 **itself**, in Dart: a 1 s sweep

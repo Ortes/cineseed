@@ -13,6 +13,7 @@ export 'src/local_range_server.dart';
 export 'src/log.dart';
 export 'src/media_source.dart';
 export 'src/mkv_cues.dart';
+export 'src/mkv_subtitles.dart';
 export 'src/mp4_boxes.dart';
 export 'src/probe.dart';
 export 'src/producer_manager.dart';

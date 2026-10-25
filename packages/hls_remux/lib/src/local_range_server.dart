@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'log.dart';
 import 'media_source.dart';
@@ -60,6 +61,32 @@ class LocalRangeServer {
   }
 
   void forget(String id) => _files.remove(id);
+
+  /// Reads [length] bytes at [offset] of [id] in-process, waiting for them like
+  /// a request does — fewer at the end of the file or of what is downloaded.
+  /// Null once the file is gone: read its `fallback` instead.
+  Future<Uint8List?> read(String id, int offset, int length) async {
+    final entry = _files[id];
+    if (entry == null) throw StateError('$id is not registered');
+    final file = entry.file;
+    if (offset >= file.length) return Uint8List(0);
+    final n = await _waitReadable(file, offset);
+    final path = file.path();
+    if (path == null) {
+      await entry.moved(); // registers the fallback
+      return null;
+    }
+    if (n == 0) {
+      throw TimeoutException('$id: byte $offset not downloaded', waitCap);
+    }
+    final raf = await File(path).open();
+    try {
+      await raf.setPosition(offset);
+      return await raf.read(min(n, length));
+    } finally {
+      await raf.close();
+    }
+  }
 
   Future<void> _handle(HttpRequest req) async {
     final res = req.response;

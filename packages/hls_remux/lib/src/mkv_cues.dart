@@ -20,7 +20,32 @@ class MkvCues {
   /// Total duration in seconds if found in Info (else null).
   final double? durationSeconds;
 
-  const MkvCues(this.keyframeTimes, this.durationSeconds);
+  /// Absolute offset of the Segment's data: Cues positions count from here.
+  final int segmentStart;
+
+  /// Seconds per timestamp tick (Info's TimecodeScale).
+  final double tickSeconds;
+
+  /// The subtitle tracks, in file order: entry `N` is ffmpeg's `0:s:N`.
+  final List<MkvTrack> subtitleTracks;
+
+  /// Each subtitle track's cue points (by track number), ascending. mkvmerge
+  /// indexes every subtitle block, with its position and duration; a track
+  /// missing here has no index.
+  final Map<int, List<MkvCueRef>> subtitleCues;
+
+  /// The video track's cue points: where the clusters start, ascending.
+  final List<MkvCueRef> clusterCues;
+
+  const MkvCues(
+    this.keyframeTimes,
+    this.durationSeconds, {
+    this.segmentStart = 0,
+    this.tickSeconds = 0.001,
+    this.subtitleTracks = const [],
+    this.subtitleCues = const {},
+    this.clusterCues = const [],
+  });
 
   // --- EBML element IDs (full IDs, length-descriptor bits kept) ---
   static const _idEbmlHeader = 0x1A45DFA3;
@@ -37,18 +62,29 @@ class MkvCues {
   static const _idCueTime = 0xB3;
   static const _idCueTrackPositions = 0xB7;
   static const _idCueTrack = 0xF7;
+  static const _idCueClusterPosition = 0xF1;
+  static const _idCueRelativePosition = 0xF0;
+  static const _idCueDuration = 0xB2;
   static const _idTracks = 0x1654AE6B;
   static const _idTrackEntry = 0xAE;
   static const _idTrackNumber = 0xD7;
   static const _idTrackType = 0x83;
+  static const _idCodecId = 0x86;
+  static const _idContentEncodings = 0x6D80;
+  static const _idContentEncoding = 0x6240;
+  static const _idContentCompression = 0x5034;
+  static const _idContentCompAlgo = 0x4254;
+  static const _idContentCompSettings = 0x4255;
+  static const _idContentEncryption = 0x5035;
   static const _trackTypeVideo = 1;
+  static const _trackTypeSubtitle = 0x11;
 
   /// Fetch + parse the Cues. [url] is a presigned S3 GET URL (Range-capable).
   static Future<MkvCues?> fetch(String url, {http.Client? client}) async {
     final c = client ?? http.Client();
     final owns = client == null;
     try {
-      final read = _RangeReader(url, c).read;
+      final read = httpRangeReader(url, c);
       final segDataStart = await _segmentDataStart(read);
       if (segDataStart == null) return null;
       return await _parseSegment(read, segDataStart);
@@ -116,9 +152,19 @@ class MkvCues {
     // snap back to the real keyframe, so the segment's content/duration no
     // longer match the boundary we assign — tolerated on sequential append but
     // breaks decode on seek. Null → couldn't resolve it; fall back to all cues.
-    final videoTrack = tracksPos != null
-        ? await _readVideoTrackNumber(read, tracksPos)
-        : null;
+    final tracks = tracksPos != null
+        ? await _readTracks(read, tracksPos)
+        : const <MkvTrack>[];
+    final videoTrack = tracks
+        .where((t) => t.type == _trackTypeVideo)
+        .firstOrNull
+        ?.number;
+    final subtitleTracks = [
+      for (final t in tracks)
+        if (t.type == _trackTypeSubtitle) t,
+    ];
+    final subtitleCues = <int, List<MkvCueRef>>{};
+    final clusterCues = <MkvCueRef>[];
 
     // TimecodeScale (default 1ms) + optional Duration from Info.
     var timecodeScale = 1000000; // ns per tick
@@ -158,10 +204,10 @@ class MkvCues {
       final cp = _readElementHeader(cuesBuf, co);
       if (cp == null) break;
       if (cp.id == _idCuePoint) {
-        // A CuePoint has one CueTime and a CueTrackPositions (with CueTrack).
-        // Keep it only if it indexes the video track.
+        // A CuePoint has one CueTime and one CueTrackPositions per track it
+        // indexes. Keyframe times come from the video track's only.
         int? cueTimeRaw;
-        int? cueTrack;
+        final positions = <({int track, int? cluster, int? rel, int? dur})>[];
         var pco = cp.contentStart;
         final pend = cp.contentStart + cp.size;
         while (pco + 1 < pend && pco + 1 < cuesBuf.length) {
@@ -170,29 +216,57 @@ class MkvCues {
           if (e.id == _idCueTime) {
             cueTimeRaw = _readUint(cuesBuf, e.contentStart, e.size);
           } else if (e.id == _idCueTrackPositions) {
+            int? track, cluster, rel, dur;
             var to = e.contentStart;
             final tend = e.contentStart + e.size;
             while (to + 1 < tend && to + 1 < cuesBuf.length) {
               final f = _readElementHeader(cuesBuf, to);
               if (f == null) break;
-              if (f.id == _idCueTrack) {
-                cueTrack = _readUint(cuesBuf, f.contentStart, f.size);
-                break;
+              final v = _readUint(cuesBuf, f.contentStart, f.size);
+              switch (f.id) {
+                case _idCueTrack:
+                  track = v;
+                case _idCueClusterPosition:
+                  cluster = v;
+                case _idCueRelativePosition:
+                  rel = v;
+                case _idCueDuration:
+                  dur = v;
               }
               final next = f.contentStart + f.size;
               if (next <= to) break;
               to = next;
+            }
+            if (track != null) {
+              positions.add((
+                track: track,
+                cluster: cluster,
+                rel: rel,
+                dur: dur,
+              ));
             }
           }
           final next = e.contentStart + e.size;
           if (next <= pco) break;
           pco = next;
         }
-        // videoTrack == null → couldn't resolve the track list, keep all
-        // (legacy behaviour). Otherwise keep video-track cues only.
-        if (cueTimeRaw != null &&
-            (videoTrack == null || cueTrack == videoTrack)) {
-          times.add(cueTimeRaw * scaleSecs);
+        if (cueTimeRaw != null) {
+          // videoTrack == null → couldn't resolve the track list, keep all
+          // (legacy behaviour). Otherwise keep video-track cues only.
+          if (videoTrack == null ||
+              positions.any((p) => p.track == videoTrack)) {
+            times.add(cueTimeRaw * scaleSecs);
+          }
+          for (final p in positions) {
+            final cluster = p.cluster;
+            if (cluster == null) continue;
+            final ref = MkvCueRef(cueTimeRaw, cluster, p.rel, p.dur);
+            if (p.track == videoTrack) {
+              clusterCues.add(ref);
+            } else if (subtitleTracks.any((t) => t.number == p.track)) {
+              (subtitleCues[p.track] ??= []).add(ref);
+            }
+          }
         }
       }
       final next = cp.contentStart + cp.size;
@@ -203,7 +277,20 @@ class MkvCues {
     if (times.isEmpty) return null;
     times.sort();
     final dur = durationTicks != null ? durationTicks * scaleSecs : null;
-    return MkvCues(times, dur);
+    int byTime(MkvCueRef a, MkvCueRef b) => a.time.compareTo(b.time);
+    clusterCues.sort(byTime);
+    for (final refs in subtitleCues.values) {
+      refs.sort(byTime);
+    }
+    return MkvCues(
+      times,
+      dur,
+      segmentStart: segDataStart,
+      tickSeconds: scaleSecs,
+      subtitleTracks: subtitleTracks,
+      subtitleCues: subtitleCues,
+      clusterCues: clusterCues,
+    );
   }
 
   /// Where the Cues, Info and Tracks elements start (absolute offsets).
@@ -324,49 +411,91 @@ class MkvCues {
     );
   }
 
-  /// Reads the Tracks element at [tracksPos] and returns the TrackNumber of the
-  /// first video track (TrackType == 1), or null if none/unparseable. The
-  /// number is what CuePoints reference via CueTrack.
-  static Future<int?> _readVideoTrackNumber(
+  /// Reads the Tracks element at [tracksPos]: every track's number (what
+  /// CuePoints reference via CueTrack), type, codec and content encoding.
+  /// Empty if unparseable.
+  static Future<List<MkvTrack>> _readTracks(
     ByteRangeReader read,
     int tracksPos,
   ) async {
+    final out = <MkvTrack>[];
     try {
       final buf = await read(tracksPos, 256 * 1024);
       final tracks = _readElementHeader(buf, 0);
-      if (tracks == null || tracks.id != _idTracks) return null;
-      var o = tracks.contentStart;
-      final end = tracks.contentStart + tracks.size;
-      while (o + 2 < end && o + 2 < buf.length) {
-        final te = _readElementHeader(buf, o);
-        if (te == null) break;
-        if (te.id == _idTrackEntry) {
-          int? number;
-          int? type;
-          var to = te.contentStart;
-          final tend = te.contentStart + te.size;
-          while (to + 1 < tend && to + 1 < buf.length) {
-            final e = _readElementHeader(buf, to);
-            if (e == null) break;
-            if (e.id == _idTrackNumber) {
+      if (tracks == null || tracks.id != _idTracks) return out;
+      for (final te in _children(buf, tracks)) {
+        if (te.id != _idTrackEntry) continue;
+        int? number;
+        int? type;
+        var codec = '';
+        int? compAlgo;
+        Uint8List? compSettings;
+        var encrypted = false;
+        for (final e in _children(buf, te)) {
+          switch (e.id) {
+            case _idTrackNumber:
               number = _readUint(buf, e.contentStart, e.size);
-            } else if (e.id == _idTrackType) {
+            case _idTrackType:
               type = _readUint(buf, e.contentStart, e.size);
-            }
-            final next = e.contentStart + e.size;
-            if (next <= to) break;
-            to = next;
+            case _idCodecId:
+              codec = String.fromCharCodes(
+                buf,
+                e.contentStart,
+                e.contentStart + e.size,
+              ).replaceAll('\x00', '');
+            case _idContentEncodings:
+              for (final enc in _children(buf, e)) {
+                if (enc.id != _idContentEncoding) continue;
+                for (final c in _children(buf, enc)) {
+                  if (c.id == _idContentEncryption) encrypted = true;
+                  if (c.id != _idContentCompression) continue;
+                  compAlgo = 0; // ContentCompAlgo's default: zlib
+                  for (final f in _children(buf, c)) {
+                    if (f.id == _idContentCompAlgo) {
+                      compAlgo = _readUint(buf, f.contentStart, f.size);
+                    } else if (f.id == _idContentCompSettings) {
+                      compSettings = Uint8List.sublistView(
+                        buf,
+                        f.contentStart,
+                        f.contentStart + f.size,
+                      );
+                    }
+                  }
+                }
+              }
           }
-          if (type == _trackTypeVideo && number != null) return number;
         }
-        final next = te.contentStart + te.size;
-        if (next <= o) break;
-        o = next;
+        if (number != null && type != null) {
+          out.add(
+            MkvTrack(
+              number: number,
+              type: type,
+              codecId: codec,
+              compAlgo: compAlgo,
+              compSettings: compSettings,
+              encrypted: encrypted,
+            ),
+          );
+        }
       }
     } catch (_) {
       // Treat any parse failure as "unknown" → caller keeps all cues.
     }
-    return null;
+    return out;
+  }
+
+  /// The child elements of [parent], within what [b] holds.
+  static Iterable<_Element> _children(Uint8List b, _Element parent) sync* {
+    var o = parent.contentStart;
+    final end = parent.contentStart + parent.size;
+    while (o + 1 < end && o + 1 < b.length) {
+      final e = _readElementHeader(b, o);
+      if (e == null) return;
+      yield e;
+      final next = e.contentStart + e.size;
+      if (next <= o) return;
+      o = next;
+    }
   }
 
   // --- EBML primitives ---
@@ -444,23 +573,69 @@ typedef _SeekHeadResult = ({
   int? tracksPos,
 });
 
+/// One Matroska track, as the Tracks element describes it.
+class MkvTrack {
+  const MkvTrack({
+    required this.number,
+    required this.type,
+    required this.codecId,
+    this.compAlgo,
+    this.compSettings,
+    this.encrypted = false,
+  });
+
+  /// TrackNumber: what blocks and CuePoints reference.
+  final int number;
+
+  /// TrackType: 1 video, 2 audio, 0x11 subtitle.
+  final int type;
+
+  /// CodecID, e.g. `S_TEXT/UTF8`.
+  final String codecId;
+
+  /// ContentCompAlgo when the blocks are compressed: 0 zlib, 3 header
+  /// stripping ([compSettings] is the stripped prefix). Null: not compressed.
+  final int? compAlgo;
+  final Uint8List? compSettings;
+
+  /// The blocks are encrypted (ContentEncryption): unreadable here.
+  final bool encrypted;
+}
+
+/// One CueTrackPositions: where a track's block at [time] lives.
+class MkvCueRef {
+  const MkvCueRef(this.time, this.clusterPos, this.relativePos, this.duration);
+
+  /// CueTime, in ticks.
+  final int time;
+
+  /// CueClusterPosition: the Cluster's offset from the Segment's data start.
+  final int clusterPos;
+
+  /// CueRelativePosition: the block's offset from the Cluster's data start.
+  final int? relativePos;
+
+  /// CueDuration, in ticks.
+  final int? duration;
+}
+
 /// Reads [length] bytes at [offset] — or fewer, at the end of what is there.
 typedef ByteRangeReader = Future<Uint8List> Function(int offset, int length);
 
-/// Fetches byte ranges from a URL via HTTP `Range` requests.
-class _RangeReader {
-  final String url;
-  final http.Client client;
-  _RangeReader(this.url, this.client);
-
-  Future<Uint8List> read(int offset, int length) async {
-    final res = await client.get(
-      Uri.parse(url),
-      headers: {'Range': 'bytes=$offset-${offset + length - 1}'},
-    );
-    if (res.statusCode != 206 && res.statusCode != 200) {
-      throw http.ClientException('Range read failed: HTTP ${res.statusCode}');
-    }
-    return res.bodyBytes;
-  }
-}
+/// Reads byte ranges of [url] with HTTP `Range` requests.
+ByteRangeReader httpRangeReader(String url, http.Client client) =>
+    (offset, length) async {
+      final res = await client.get(
+        Uri.parse(url),
+        headers: {'Range': 'bytes=$offset-${offset + length - 1}'},
+      );
+      if (res.statusCode == 416) return Uint8List(0); // past the end
+      // A 200 is the whole file from byte 0: only right when that was asked.
+      if (res.statusCode != 206 && !(res.statusCode == 200 && offset == 0)) {
+        throw http.ClientException('Range read failed: HTTP ${res.statusCode}');
+      }
+      final body = res.bodyBytes;
+      return body.length > length
+          ? Uint8List.sublistView(body, 0, length)
+          : body;
+    };

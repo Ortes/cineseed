@@ -68,6 +68,12 @@ class S3RangeProxy {
   final Duration writeIdleTimeout;
 
   final HttpClient _client;
+
+  /// For [readUpstream]: its own pool, so small reads never wait behind chunk
+  /// fetches (nor take their connections).
+  final HttpClient _directClient = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 10)
+    ..idleTimeout = const Duration(seconds: 30);
   HttpServer? _server;
 
   // hash -> per-file state (upstream URL + learned total size).
@@ -147,6 +153,7 @@ class S3RangeProxy {
     await _server?.close(force: true);
     _server = null;
     _client.close(force: true);
+    _directClient.close(force: true);
   }
 
   /// Registers (or refreshes) the upstream URL for [hash] and returns the
@@ -154,6 +161,63 @@ class S3RangeProxy {
   String register(String hash, String upstreamUrl) {
     (_entries[hash] ??= _Entry()).upstreamUrl = upstreamUrl;
     return 'http://127.0.0.1:$port/$hash';
+  }
+
+  /// Reads [length] bytes at [offset] of [hash]'s upstream in one Range GET,
+  /// bypassing the chunk cache: for small scattered reads (subtitle blocks),
+  /// where a chunk fetch plus read-ahead would pull megabytes per read. Fewer
+  /// bytes past the end of the file.
+  ///
+  /// Scaleway holds about one request in a thousand for exactly 30 s before it
+  /// answers (measured from the server: 3000 1 KiB reads, p50 0.05 s, p99
+  /// 0.22 s, three at 30.0 s to the first byte). A read with no headers after
+  /// [_directFirstByte] is that stall, so it is abandoned and sent again.
+  Future<Uint8List> readUpstream(String hash, int offset, int length) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await _readUpstreamOnce(hash, offset, length);
+      } on TimeoutException {
+        if (attempt == _directAttempts) rethrow;
+      }
+    }
+  }
+
+  static const _directFirstByte = Duration(seconds: 2);
+  static const _directAttempts = 3;
+
+  Future<Uint8List> _readUpstreamOnce(
+    String hash,
+    int offset,
+    int length,
+  ) async {
+    final e = _entries[hash];
+    if (e == null) throw StateError('$hash is not registered');
+    final req = await _directClient.getUrl(Uri.parse(e.upstreamUrl));
+    req.headers.set(
+      HttpHeaders.rangeHeader,
+      'bytes=$offset-${offset + length - 1}',
+    );
+    final pending = req.close();
+    final HttpClientResponse resp;
+    try {
+      resp = await pending.timeout(_directFirstByte);
+    } on TimeoutException {
+      req.abort(); // drop the stalled connection
+      // The abandoned response may still arrive (or fail): discard it.
+      unawaited(pending.then((r) => r.listen(null).cancel(), onError: (_) {}));
+      rethrow;
+    }
+    if (resp.statusCode != HttpStatus.partialContent) {
+      // Not draining: a 200 would be the whole file.
+      await resp.listen(null).cancel();
+      if (resp.statusCode == HttpStatus.requestedRangeNotSatisfiable) {
+        return Uint8List(0);
+      }
+      throw HttpException('upstream HTTP ${resp.statusCode} for a range');
+    }
+    final out = BytesBuilder(copy: false);
+    await resp.timeout(upstreamTimeout).forEach(out.add);
+    return out.takeBytes();
   }
 
   void forget(String hash) {

@@ -51,6 +51,8 @@ Future<void> main(List<String> args) async {
     url: local,
     probe: probe,
     keyframes: cues.keyframeTimes,
+    cues: cues,
+    subtitleBytes: (o, n) => proxy.readUpstream('probe', o, n),
     boundaries: boundaries,
     producerBoundaries: producerBoundaries,
     groupStart: groupStart,
