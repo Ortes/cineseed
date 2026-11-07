@@ -15,6 +15,9 @@ import '../../core/api_client.dart';
 import '../../core/debug_log.dart';
 import '../../core/providers.dart';
 import '../../core/theme.dart';
+import '../room/room_provider.dart';
+import '../room/room_sync.dart';
+import '../room/room_widgets.dart';
 import '../search/format_helpers.dart';
 import 'cast_button.dart';
 import 'watched_button.dart';
@@ -31,11 +34,17 @@ class PlayerScreen extends HookConsumerWidget {
   /// when the user picked it from a multi-file torrent.
   final String? title;
 
+  /// Watch-together room from an invite link (`?room=<id>`): the player asks
+  /// for a name and joins before anything plays. Null when opened normally;
+  /// the host joins the room it creates from the AppBar without a reload.
+  final String? room;
+
   const PlayerScreen({
     super.key,
     required this.hash,
     this.fileIndex,
     this.title,
+    this.room,
   });
 
   @override
@@ -61,7 +70,22 @@ class PlayerScreen extends HookConsumerWidget {
     // user press play.
     final autoPlay = ref.read(userInitiatedPlaybackProvider);
 
+    final streamId = ApiClient.streamId(hash, fileIndex);
+    final roomClient = ref.watch(roomProvider);
+    // An invite link: nothing plays until the guest has joined — their tap on
+    // Join is also the gesture that lets the player call play() later.
+    final needsJoin = room != null && roomClient?.roomId != room;
+    // Leaving the player leaves the room; the notifier outlives this widget.
+    final roomNotifier = ref.read(roomProvider.notifier);
+    useEffect(() => roomNotifier.leave, [roomNotifier]);
+    useRoomSync(
+      vc: video.value,
+      room: roomClient,
+      claimState: roomClient?.creator ?? false,
+    );
+
     useEffect(() {
+      if (needsJoin) return null;
       var cancelled = false;
       // Cancels the in-flight backend calls when the player reloads (hash change
       // / navigation away), instead of merely discarding their results.
@@ -109,13 +133,16 @@ class PlayerScreen extends HookConsumerWidget {
             'initialized size=${vc!.value.size} '
                 'duration=${vc!.value.duration}',
           );
-          final resumeAt = PlaybackPosition.load(
-            ApiClient.streamId(hash, fileIndex),
-          );
-          DebugLog.log('PLAYER', 'resume at $resumeAt');
+          // In a room the sync hook seeks to the room's position and starts
+          // playback; this browser's own resume point does not apply.
+          final inRoom = ref.read(roomProvider) != null;
+          final resumeAt = inRoom
+              ? null
+              : PlaybackPosition.load(ApiClient.streamId(hash, fileIndex));
+          DebugLog.log('PLAYER', 'resume at $resumeAt (room: $inRoom)');
           cc = ChewieController(
             videoPlayerController: vc!,
-            autoPlay: autoPlay,
+            autoPlay: autoPlay && !inRoom,
             startAt: resumeAt,
             looping: false,
             // Web: don't let Chewie push its own fullscreen route. That route
@@ -259,7 +286,7 @@ class PlayerScreen extends HookConsumerWidget {
       };
       // Re-runs on a file change too: switching episodes within one season pack
       // reuses this widget, and only the file index differs.
-    }, [hash, fileIndex]);
+    }, [hash, fileIndex, needsJoin]);
 
     // Debug only: log user actions (play/pause + seeks) off the controller's
     // value stream. A position jump > ~1 s between ticks is treated as a seek
@@ -384,6 +411,18 @@ class PlayerScreen extends HookConsumerWidget {
     final heading = title ?? torrent?.name ?? '';
 
     Widget body() {
+      if (needsJoin) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: RoomJoinCard(
+            title: 'You were invited to watch this together.',
+            onJoin: (name) {
+              ref.read(userInitiatedPlaybackProvider.notifier).mark();
+              roomNotifier.join(id: room!, stream: streamId, name: name);
+            },
+          ),
+        );
+      }
       if (downloading.value) {
         final p = startProgress.value;
         return Padding(
@@ -437,7 +476,7 @@ class PlayerScreen extends HookConsumerWidget {
       if (chewie.value == null) return const CircularProgressIndicator();
       final ratio = video.value!.value.aspectRatio;
       final screen = MediaQuery.sizeOf(context);
-      return AspectRatio(
+      final player = AspectRatio(
         // Fullscreen: fill the screen. Chewie letterboxes the picture itself
         // and lays its controls over its whole area, so they snap to the
         // bottom of the screen instead of sitting on the picture.
@@ -447,6 +486,14 @@ class PlayerScreen extends HookConsumerWidget {
         // The GlobalKey keeps this Chewie (and its <video> platform view)
         // alive across the AppBar show/hide on fullscreen toggle.
         child: Chewie(key: playerKey, controller: chewie.value!),
+      );
+      if (roomClient == null) return player;
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          player,
+          RoomWaitingBanner(room: roomClient),
+        ],
       );
     }
 
@@ -462,7 +509,11 @@ class PlayerScreen extends HookConsumerWidget {
                 maxLines: 1,
               ),
               actions: [
-                WatchedButton(id: ApiClient.streamId(hash, fileIndex)),
+                if (roomClient != null)
+                  RoomChip(room: roomClient)
+                else if (chewie.value != null)
+                  WatchTogetherButton(stream: streamId),
+                WatchedButton(id: streamId),
                 if (chewie.value != null)
                   CastButton(
                     hash: hash,

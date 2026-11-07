@@ -32,11 +32,14 @@ final router = GoRouter(
           },
         ),
         // A torrent: straight into the player when it holds a single video,
-        // otherwise its file list (see [WatchScreen]).
+        // otherwise its file list (see [WatchScreen]). `?room=<id>` on either
+        // is a watch-together invite (see [PlayerScreen.room]).
         GoRoute(
           path: 'watch/:hash',
-          builder: (context, state) =>
-              WatchScreen(hash: state.pathParameters['hash']!),
+          builder: (context, state) => WatchScreen(
+            hash: state.pathParameters['hash']!,
+            room: state.uri.queryParameters['room'],
+          ),
           routes: [
             // One file inside that torrent, by its index in the torrent's file
             // list. Nested, so backing out of an episode returns to the list.
@@ -46,6 +49,7 @@ final router = GoRouter(
                 hash: state.pathParameters['hash']!,
                 fileIndex: int.parse(state.pathParameters['index']!),
                 title: state.extra as String?,
+                room: state.uri.queryParameters['room'],
               ),
             ),
           ],

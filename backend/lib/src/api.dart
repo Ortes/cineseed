@@ -6,8 +6,10 @@ import 'package:cineseed_shared/cineseed_shared.dart';
 import 'package:hls_remux/hls_remux.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
+import 'package:shelf_web_socket/shelf_web_socket.dart';
 
 import 'database.dart';
+import 'rooms.dart';
 import 'storage/s3_offloader.dart';
 import 'torrent/local_file.dart';
 import 'torrent/stream_id.dart';
@@ -57,6 +59,7 @@ String _contentTypeFor(String name) {
   TmdbClient? tmdb,
   C411Catalog? catalog,
   required CineseedDb db,
+  required RoomService rooms,
   bool debug = false,
 }) {
   final r = Router();
@@ -356,6 +359,22 @@ String _contentTypeFor(String name) {
 
   Future<Response> notReadyForHls(String id) =>
       unlessDownloading(id, _json({'error': 'not ready for HLS'}, 409));
+
+  // Watch together: a room is a shared playback state for one stream id
+  // (see [RoomService]). Create one, then every member connects to its socket.
+  r.post('/rooms', (Request req) async {
+    final body = jsonDecode(await req.readAsString()) as Map;
+    final stream = body['stream'];
+    if (stream is! String || StreamId.parse(stream) == null) {
+      return _json({'error': 'stream must be a stream id'}, 400);
+    }
+    final room = rooms.create(stream);
+    return _json({'id': room.id, 'stream': room.stream});
+  });
+
+  r.get('/rooms/<id>/ws', (Request req, String id) {
+    return webSocketHandler((channel, _) => rooms.connect(id, channel))(req);
+  });
 
   // Stream: hybrid. If the download is finished the object is on S3 → hand the
   // browser a presigned URL (fast, offloads the server). Until the object lands

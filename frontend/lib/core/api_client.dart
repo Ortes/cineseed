@@ -182,6 +182,25 @@ class ApiClient {
     return ((res.data as Map)['debugMode'] as bool?) ?? false;
   }
 
+  /// Makes a watch-together room for [stream] (a stream id); returns its id.
+  Future<String> createRoom(String stream) async {
+    final res = await _dio.post('/api/rooms', data: {'stream': stream});
+    return (res.data as Map)['id'] as String;
+  }
+
+  /// WebSocket URL of room [id]. Same-origin in prod (empty [baseUrl]), so the
+  /// page's own origin is used; otherwise the backend's, with the scheme
+  /// switched to ws(s).
+  String roomSocketUrl(String id) {
+    final base = Uri.parse(baseUrl.isEmpty ? Uri.base.origin : baseUrl);
+    return base
+        .replace(
+          scheme: base.scheme == 'https' ? 'wss' : 'ws',
+          path: '/api/rooms/$id/ws',
+        )
+        .toString();
+  }
+
   Future<String> downloadUrl(String hash, {int? fileIndex}) async {
     final res = await _dio.get('/api/download/${streamId(hash, fileIndex)}');
     return (res.data as Map)['url'] as String;

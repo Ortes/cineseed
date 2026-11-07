@@ -12,6 +12,7 @@ import 'api.dart';
 import 'config.dart';
 import 'database.dart';
 import 'media/torrent_media_resolver.dart';
+import 'rooms.dart';
 import 'storage/s3_offloader.dart';
 import 'storage/s3_signer.dart';
 import 'torrent/torrent_client.dart';
@@ -167,7 +168,9 @@ Future<CineseedServer> startServer(
           apiKey: config.trackerApiKey,
         )
       : null;
+  final rooms = RoomService()..startSweeping();
   final api = buildApiRouter(
+    rooms: rooms,
     tracker: tracker,
     catalog: catalog,
     db: db,
@@ -218,6 +221,7 @@ Future<CineseedServer> startServer(
   return CineseedServer._(server, () async {
     await server.close(force: true);
     api.dispose();
+    rooms.dispose();
     db.close();
     hls.dispose();
     await producerManager.killAll();

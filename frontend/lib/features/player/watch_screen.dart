@@ -23,9 +23,12 @@ import 'watched_button.dart';
 /// the per-file view matters most, since each episode has its own progress and
 /// its own VLC link.
 class WatchScreen extends ConsumerWidget {
-  const WatchScreen({super.key, required this.hash});
+  const WatchScreen({super.key, required this.hash, this.room});
 
   final String hash;
+
+  /// Watch-together room to join, from the invite link's `?room=`.
+  final String? room;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,7 +55,7 @@ class WatchScreen extends ConsumerWidget {
         // redirected, so the URL stays /watch/:hash (deep links keep working)
         // and there's no flash of a one-row list. fileIndex stays null: a bare
         // hash already means "the torrent's only video".
-        if (t.isSingleFile) return PlayerScreen(hash: hash);
+        if (t.isSingleFile) return PlayerScreen(hash: hash, room: room);
         return _FilePicker(hash: hash, torrent: t);
       },
     );
