@@ -77,11 +77,11 @@ packages:
     dependency: "direct overridden"
     description:
       path: "."
-      ref: "9345d9d799fe561ab9f63b5039c7b34e56b118b2"
-      resolved-ref: "9345d9d799fe561ab9f63b5039c7b34e56b118b2"
+      ref: ac000970e5bb7cce08446062b423f8e7b029d711
+      resolved-ref: ac000970e5bb7cce08446062b423f8e7b029d711
       url: "https://github.com/fluttercommunity/chewie.git"
     source: git
-    version: "1.17.2"
+    version: "1.17.4"
   cli_config:
     dependency: transitive
     description:
