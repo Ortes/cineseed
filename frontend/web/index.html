@@ -35,6 +35,13 @@
   <!-- hls.js: enables HLS (.m3u8) playback via video_player_web_hls on
        browsers without native HLS (Chrome/Firefox). Vendored locally. -->
   <script src="hls.min.js"></script>
+  <script>
+    // A segment past the download point is held by the backend for up to 18 s
+    // (ProducerConfig.segmentTimeout), then answered 503. hls.js's default 10 s
+    // time-to-first-byte aborted it first and went fatal (fragLoadTimeOut)
+    // after 5 tries: wait long enough for the 503, which it retries with backoff.
+    Hls.DefaultConfig.fragLoadPolicy.default.maxTimeToFirstByteMs = 30000;
+  </script>
 
   <!-- Google Cast: __onGCastApiAvailable must be defined before the SDK loads. -->
   <script>

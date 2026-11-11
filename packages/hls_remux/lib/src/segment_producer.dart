@@ -22,7 +22,8 @@ class ProducerConfig {
   // client before deleting; a backward seek past them restarts the producer
   final Duration pollInterval; // disk scan / waiter resolution cadence
   final Duration
-  segmentTimeout; // max wait for one segment (< hls.js fragLoadingTimeOut)
+  segmentTimeout; // max wait for one segment (< hls.js maxTimeToFirstByteMs,
+  // 30 s in frontend/web/index.html)
   final Duration idleKillDelay; // kill after this long with no active requests
   final int
   restartReorderWindow; // serve-by-wait vs restart threshold (segments)
