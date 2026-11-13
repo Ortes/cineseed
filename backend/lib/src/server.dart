@@ -181,6 +181,7 @@ Future<CineseedServer> startServer(
     hls: hls,
     segments: segments,
     tmdb: tmdb,
+    adminToken: config.adminToken,
     debug: config.debug,
   );
   final root = Router()..mount('/api', api.router.call);
@@ -211,7 +212,15 @@ Future<CineseedServer> startServer(
 
   final handler = const Pipeline()
       .addMiddleware(logRequests())
-      .addMiddleware(corsHeaders())
+      .addMiddleware(
+        corsHeaders(
+          headers: {
+            'Access-Control-Allow-Headers':
+                'accept,accept-encoding,authorization,content-type,dnt,origin,'
+                'user-agent,x-cineseed-user',
+          },
+        ),
+      )
       .addHandler(
         Cascade().add(root.call).add(staticHandler).add(spaFallback).handler,
       );

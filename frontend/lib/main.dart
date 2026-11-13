@@ -10,6 +10,7 @@ import 'core/api_client.dart';
 import 'core/debug_log.dart';
 import 'core/providers.dart';
 import 'core/theme.dart';
+import 'core/visitor.dart';
 import 'router.dart';
 
 Future<void> main() async {
@@ -56,5 +57,6 @@ class CineseedApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: buildCineseedTheme(),
     routerConfig: router,
+    builder: (context, child) => NameGate(child: child!),
   );
 }

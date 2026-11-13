@@ -122,7 +122,10 @@ void main() {
       );
       if (r.exitCode != 0) fail('ffmpeg: ${r.stderr}');
       client = _OneFile(dir.path, mkv.lengthSync());
-      server = await startServer(Config.fromEnv(_env()), client: client);
+      server = await startServer(
+        Config.fromEnv(_env({'ADMIN_TOKEN': 'secret'})),
+        client: client,
+      );
       base = 'http://127.0.0.1:${server.http.port}/api';
     });
 
@@ -140,6 +143,22 @@ void main() {
 
     Future<Object?> json(String url) async =>
         jsonDecode(await (await get(url)).transform(utf8.decoder).join());
+
+    test('who watched and downloaded what, behind the admin token', () async {
+      for (final path in ['stream/h1', 'stream/h1', 'download/h1']) {
+        final req = await http.getUrl(Uri.parse('$base/$path'));
+        req.headers.set('x-cineseed-user', Uri.encodeComponent('Zoé'));
+        await (await req.close()).drain<void>();
+      }
+      expect((await get('$base/activity?token=nope')).statusCode, 404);
+      final page = await (await get(
+        '$base/activity?token=secret',
+      )).transform(utf8.decoder).join();
+      expect('<td>Zoé</td>'.allMatches(page), hasLength(2));
+      expect(page, contains('<td>watched</td>'));
+      expect(page, contains('<td>downloaded</td>'));
+      expect(page, contains('<td>film.mkv</td>'));
+    });
 
     test('a finished torrent is ready to stream, with no upload', () async {
       final t = (await json('$base/torrents') as List).single as Map;

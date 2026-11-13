@@ -60,9 +60,32 @@ String _contentTypeFor(String name) {
   C411Catalog? catalog,
   required CineseedDb db,
   required RoomService rooms,
+  String? adminToken,
   bool debug = false,
 }) {
   final r = Router();
+
+  // Who did what: the visitor's name (the frontend sends it on every call,
+  // URI-encoded) and IP, against the film.
+  void log(Request req, String action, String hash, String title) {
+    final name = req.headers['x-cineseed-user'];
+    final forwarded = req.headers['x-forwarded-for'];
+    final conn = req.context['shelf.io.connection_info'] as HttpConnectionInfo?;
+    final who = name == null ? '?' : Uri.decodeComponent(name);
+    final ip =
+        forwarded?.split(',').first.trim() ??
+        conn?.remoteAddress.address ??
+        '?';
+    if (db.logActivity(
+      who: who,
+      ip: ip,
+      action: action,
+      hash: hash.toLowerCase(),
+      title: title,
+    )) {
+      stdout.writeln('activity: $who ($ip) $action "$title"');
+    }
+  }
 
   offload?.ensureSweep(); // boot: upload any finished-but-not-on-S3, then idle
   final suggestions = tmdb == null || catalog == null
@@ -77,6 +100,42 @@ String _contentTypeFor(String name) {
           allocineIds: allocineIds,
           db: db,
         )..start());
+
+  // The activity log, for the owner only: needs ADMIN_TOKEN as `?token=`.
+  r.get('/activity', (Request req) {
+    if (adminToken == null || req.url.queryParameters['token'] != adminToken) {
+      return _json({'error': 'not found'}, 404);
+    }
+    final rows = db.activity();
+    final esc = const HtmlEscape();
+    final body = StringBuffer(
+      '<!doctype html><meta charset="utf-8">'
+      '<meta name="viewport" content="width=device-width">'
+      '<title>Cineseed activity</title>'
+      '<style>body{font:14px system-ui;margin:16px}table{border-collapse:'
+      'collapse}td,th{padding:4px 10px;text-align:left;border-bottom:1px solid'
+      ' #ddd}</style><table><tr><th>When (UTC)</th><th>Who</th><th>IP</th>'
+      '<th>Action</th><th>Film</th></tr>',
+    );
+    for (final row in rows) {
+      body.write('<tr>');
+      for (final k in ['at', 'who', 'ip', 'action', 'title']) {
+        final v = k == 'at'
+            ? row[k]!.substring(0, 16).replaceFirst('T', ' ')
+            : row[k]!;
+        body.write('<td>${esc.convert(v)}</td>');
+      }
+      body.write('</tr>');
+    }
+    body.write('</table>');
+    return Response.ok(
+      body.toString(),
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    );
+  });
 
   // Runtime config for the frontend. The web build is baked into the image, so
   // it can't read env vars — it reads `debugMode` here at startup to mirror the
@@ -303,6 +362,8 @@ String _contentTypeFor(String name) {
     }
     final metainfo = await tracker.fetchTorrent(hash);
     await client.addTorrent(metainfo, paused: false);
+    final added = await client.streamInfo(hash);
+    log(req, 'added', hash, added?.name ?? hash);
     offload?.unstrand(hash); // re-fetching is exactly what un-strands a torrent
     offload?.ensureSweep(); // start the 1s poll for this download
     return _json({'ok': true});
@@ -387,6 +448,7 @@ String _contentTypeFor(String name) {
       return _json({'error': 'torrent not found or no such file'}, 404);
     }
     final (info, file) = resolved;
+    log(req, 'watched', StreamId.parse(id)!.hash, file.name);
 
     // NB: Transmission's `isFinished` means "done *seeding*", not "done
     // downloading" — the download-complete signal is percentDone >= 1.0.
@@ -434,6 +496,7 @@ String _contentTypeFor(String name) {
     }
     final (info, file) = resolved;
     if (info.percentDone < 1.0) return _json({'error': 'not ready yet'}, 409);
+    log(req, 'downloaded', StreamId.parse(id)!.hash, file.name);
     if (offload == null) {
       final url = req.requestedUri.replace(
         path: '/api/file/$id',

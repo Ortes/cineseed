@@ -2,6 +2,7 @@ import 'package:cineseed_shared/cineseed_shared.dart';
 import 'package:dio/dio.dart';
 
 import 'debug_log.dart';
+import 'visitor.dart';
 
 /// One selectable audio track from `/api/hls/<hash>/audio-tracks`. The muxed
 /// HLS manifest carries no hls.js audio renditions, so the player's language
@@ -49,6 +50,17 @@ class ApiClient {
 
   ApiClient(this.baseUrl) : _dio = Dio(BaseOptions(baseUrl: baseUrl)) {
     _dio.interceptors.add(_DebugLogInterceptor());
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final name = Visitor.name;
+          if (name != null) {
+            options.headers['x-cineseed-user'] = Uri.encodeComponent(name);
+          }
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   /// Stream id: the torrent hash, suffixed with `.<fileIndex>` to address one

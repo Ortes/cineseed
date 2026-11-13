@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:cineseed_shared/cineseed_shared.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-/// The backend's own data, in one SQLite file: for now, what the suggestions
-/// need to survive a restart. A schema change bumps [_version] and adds a step
+/// The backend's own data, in one SQLite file: what the suggestions need to
+/// survive a restart, and who added, saved or watched what. A schema change bumps [_version] and adds a step
 /// to [_migrate].
 class CineseedDb {
   /// The database at [path], created if missing.
@@ -19,7 +19,7 @@ class CineseedDb {
 
   final Database _db;
 
-  static const _version = 1;
+  static const _version = 2;
 
   void _migrate() {
     if (_db.userVersion >= _version) return;
@@ -36,6 +36,19 @@ class CineseedDb {
           -- The current suggestions, one FilmSuggestion (JSON) per film.
           CREATE TABLE suggestions (tmdb_id INTEGER PRIMARY KEY, film TEXT NOT NULL);
           CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        ''');
+      }
+      if (_db.userVersion < 2) {
+        _db.execute('''
+          -- One row per visitor action on a film: added / downloaded / watched.
+          CREATE TABLE activity (
+            at TEXT NOT NULL, -- ISO 8601, UTC
+            who TEXT NOT NULL,
+            ip TEXT NOT NULL,
+            action TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            title TEXT NOT NULL
+          );
         ''');
       }
       _db.userVersion = _version;
@@ -110,6 +123,46 @@ class CineseedDb {
           builtAt.toIso8601String(),
         ]);
       });
+
+  /// Records [action] on [hash] by [who], unless they already did it in the
+  /// last 6 h: the player polls `/api/stream` for as long as it waits. True
+  /// when recorded.
+  bool logActivity({
+    required String who,
+    required String ip,
+    required String action,
+    required String hash,
+    required String title,
+    DateTime? at,
+  }) {
+    final now = (at ?? DateTime.now()).toUtc();
+    final since = now.subtract(const Duration(hours: 6)).toIso8601String();
+    final recent = _db.select(
+      'SELECT 1 FROM activity WHERE who = ? AND action = ? AND hash = ? '
+      'AND at > ? LIMIT 1',
+      [who, action, hash, since],
+    );
+    if (recent.isNotEmpty) return false;
+    _db.execute('INSERT INTO activity VALUES (?, ?, ?, ?, ?, ?)', [
+      now.toIso8601String(),
+      who,
+      ip,
+      action,
+      hash,
+      title,
+    ]);
+    return true;
+  }
+
+  /// The [limit] latest actions, newest first.
+  List<Map<String, String>> activity({int limit = 500}) => [
+    for (final r in _db.select(
+      'SELECT at, who, ip, action, title FROM activity '
+      'ORDER BY at DESC LIMIT ?',
+      [limit],
+    ))
+      {for (final k in r.keys) k: r[k] as String},
+  ];
 
   void close() => _db.close();
 }

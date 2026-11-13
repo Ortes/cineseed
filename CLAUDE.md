@@ -60,6 +60,13 @@ in the server's `.env`, and recreates only the cineseed service. Targets come fr
 `deploy/docker-compose.override.yml` (gitignored). The server-side `.env` holds all
 runtime envvars (chmod 600).
 
+## Activity log
+
+No accounts: the frontend asks each visitor's name once (mandatory, kept in
+`localStorage`) and sends it as `x-cineseed-user` on every API call. The backend logs
+`added` / `downloaded` / `watched` per name + IP + film in SQLite (`activity`, deduped
+per 6 h) and to stdout (`activity: …`). Read it at `/api/activity?token=<ADMIN_TOKEN>`.
+
 ## Suggestions
 
 `/api/suggestions` reads C411's **site** API (`/api/torrents`, same key as a Bearer token),

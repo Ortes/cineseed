@@ -62,6 +62,9 @@ class Config {
   // Verbose debug mode: full ffmpeg/producer/session logging + keep all segment
   // files on disk (no cleanup). Exposed to the frontend via GET /api/config.
   final bool debug;
+  // Unlocks /api/activity?token=… (who added, saved or watched what). Null:
+  // the page doesn't exist.
+  final String? adminToken;
 
   const Config({
     required this.trackerApiKey,
@@ -92,6 +95,7 @@ class Config {
     required this.hlsProducerTemp,
     required this.dataDir,
     required this.debug,
+    this.adminToken,
   });
 
   factory Config.fromEnv([Map<String, String>? environment]) {
@@ -161,6 +165,9 @@ class Config {
       hlsProducerTemp: env['HLS_PRODUCER_TEMP'],
       dataDir: env['CINESEED_DATA_DIR'],
       debug: optional('CINESEED_DEBUG', 'false').toLowerCase() == 'true',
+      adminToken: (env['ADMIN_TOKEN'] ?? '').isEmpty
+          ? null
+          : env['ADMIN_TOKEN'],
     );
   }
 }
