@@ -110,6 +110,11 @@ class MediaProbe {
     final res = await Process.run(ffprobe, [
       '-v',
       'quiet',
+      // The loopback proxy serves at most 16 MiB per response; reopen at the
+      // next offset rather than fail when the headers run past that (e.g.
+      // large font attachments before the first cluster).
+      '-reconnect',
+      '1',
       '-print_format',
       'json',
       '-show_streams',

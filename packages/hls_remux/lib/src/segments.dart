@@ -240,6 +240,8 @@ class SegmentGenerator {
         // ffmpeg should close+reopen on each seek so the proxy's per-request
         // window ends cleanly instead of being held open by keep-alive.)
         '-rw_timeout', '30000000', // 30 s in microseconds
+        // Same 16 MiB proxy cap as in MediaProbe.run: reopen, don't fail.
+        '-reconnect', '1',
         '-ss', _fmt(start),
         '-i', url,
         if (durationLimit > 0) ...['-t', _fmt(durationLimit)],
