@@ -217,7 +217,7 @@ Future<CineseedServer> startServer(
           headers: {
             'Access-Control-Allow-Headers':
                 'accept,accept-encoding,authorization,content-type,dnt,origin,'
-                'user-agent,x-cineseed-user',
+                'user-agent,x-cineseed-user,x-cineseed-build',
           },
         ),
       )

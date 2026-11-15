@@ -43,6 +43,10 @@ class TrackerError implements Exception {
   String toString() => message;
 }
 
+/// Sent on every call so the activity log can tell a bundle older than the
+/// name gate (no header) from a current one whose visitor has no name.
+const _build = 'name-gate';
+
 /// Thin HTTP wrapper around the Cineseed backend.
 class ApiClient {
   final Dio _dio;
@@ -53,6 +57,7 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          options.headers['x-cineseed-build'] = _build;
           final name = Visitor.name;
           if (name != null) {
             options.headers['x-cineseed-user'] = Uri.encodeComponent(name);

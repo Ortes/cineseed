@@ -25,19 +25,42 @@ class NameGate extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final name = useState(Visitor.name);
+    if (name.value != null) return child;
+
+    // Above the router's Navigator: the text field needs an Overlay of its own.
+    // The entry's builder only runs for what it creates, so the form is its own
+    // widget: one built here would keep its first (disabled) button forever.
+    return Overlay(
+      initialEntries: [
+        OverlayEntry(
+          builder: (_) => _NameForm(
+            onSubmit: (v) {
+              Visitor.name = v;
+              name.value = v;
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NameForm extends HookWidget {
+  const _NameForm({required this.onSubmit});
+
+  final ValueChanged<String> onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
     final field = useTextEditingController();
     useListenable(field);
-    if (name.value != null) return child;
 
     void submit() {
       final v = field.text.trim();
-      if (v.isEmpty) return;
-      Visitor.name = v;
-      name.value = v;
+      if (v.isNotEmpty) onSubmit(v);
     }
 
-    // Above the router's Navigator: the text field needs an Overlay of its own.
-    final form = Scaffold(
+    return Scaffold(
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
@@ -69,6 +92,5 @@ class NameGate extends HookWidget {
         ),
       ),
     );
-    return Overlay(initialEntries: [OverlayEntry(builder: (_) => form)]);
   }
 }

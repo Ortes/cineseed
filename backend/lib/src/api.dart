@@ -72,6 +72,10 @@ String _contentTypeFor(String name) {
     final forwarded = req.headers['x-forwarded-for'];
     final conn = req.context['shelf.io.connection_info'] as HttpConnectionInfo?;
     final who = name == null ? '?' : Uri.decodeComponent(name);
+    // Sent on every call by current bundles, name or not: a `?` row without
+    // a build came from a bundle older than the name gate.
+    final build = req.headers['x-cineseed-build'] ?? 'none';
+    final ua = req.headers['user-agent'] ?? '?';
     final ip =
         forwarded?.split(',').first.trim() ??
         conn?.remoteAddress.address ??
@@ -83,7 +87,9 @@ String _contentTypeFor(String name) {
       hash: hash.toLowerCase(),
       title: title,
     )) {
-      stdout.writeln('activity: $who ($ip) $action "$title"');
+      stdout.writeln(
+        'activity: $who ($ip) $action "$title" build=$build ua="$ua"',
+      );
     }
   }
 
