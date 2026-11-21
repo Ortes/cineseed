@@ -206,8 +206,9 @@ class _TotalsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var rateDown = 0, rateUp = 0, uploaded = 0, base = 0;
+    var rateDown = 0, rateUp = 0, uploaded = 0, base = 0, failing = 0;
     for (final t in torrents) {
+      if (t.error != 0) failing++;
       rateDown += t.rateDownload;
       rateUp += t.rateUpload;
       uploaded += t.uploadedEver;
@@ -255,6 +256,15 @@ class _TotalsBar extends StatelessWidget {
             value: fmtRatio(ratio),
             highlight: ratio != null && ratio >= 1,
           ),
+          // Torrents Transmission flags with an error: likely not seeding,
+          // even though they still read "Idle" or "Seeding".
+          if (failing > 0)
+            _Stat(
+              icon: Icons.error_outline_rounded,
+              label: 'Failing',
+              value: '$failing',
+              color: Theme.of(context).colorScheme.error,
+            ),
         ],
       ),
     );
@@ -267,11 +277,13 @@ class _Stat extends StatelessWidget {
     required this.label,
     required this.value,
     this.highlight = false,
+    this.color,
   });
   final IconData icon;
   final String label;
   final String value;
   final bool highlight;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -297,9 +309,11 @@ class _Stat extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: highlight
-                    ? CineseedColors.primaryBright
-                    : CineseedColors.cream,
+                color:
+                    color ??
+                    (highlight
+                        ? CineseedColors.primaryBright
+                        : CineseedColors.cream),
               ),
             ),
           ],
@@ -504,6 +518,18 @@ class _TorrentTile extends ConsumerWidget {
                       // Always rendered (a fresh add reads 0 B/s · 0 B · 0.00)
                       // so the tile height doesn't jump when seeding starts.
                       _TorrentMetrics(torrent: t),
+                      if (t.error != 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          t.errorString.isEmpty
+                              ? 'Transmission error ${t.error}'
+                              : t.errorString,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -105,6 +105,8 @@ class TransmissionClient implements TorrentClient {
         'totalSize',
         'isFinished',
         'files',
+        'error',
+        'errorString',
       ],
     });
     final torrents = (args['torrents'] as List? ?? [])

@@ -42,6 +42,14 @@ class TorrentState {
   /// acting on a single file. 0 when unknown (metadata not fetched yet).
   final int videoCount;
 
+  /// Transmission's `error`: 0 ok, 1 tracker warning, 2 tracker error,
+  /// 3 local error (e.g. its files are unreadable). Non-zero means the torrent
+  /// is likely not seeding, whatever its status says.
+  final int error;
+
+  /// Transmission's `errorString`, the reason behind [error]. Empty when ok.
+  final String errorString;
+
   const TorrentState({
     required this.hashString,
     required this.name,
@@ -60,6 +68,8 @@ class TorrentState {
     this.strandedFiles = 0,
     this.playable = false,
     this.videoCount = 0,
+    this.error = 0,
+    this.errorString = '',
   });
 
   /// Bytes fully present locally (Transmission's view). NB: this is NOT the
@@ -105,6 +115,8 @@ class TorrentState {
     strandedFiles: strandedFiles ?? this.strandedFiles,
     playable: playable ?? this.playable,
     videoCount: videoCount ?? this.videoCount,
+    error: error,
+    errorString: errorString,
   );
 
   factory TorrentState.fromJson(Map<String, dynamic> json) => TorrentState(
@@ -125,6 +137,8 @@ class TorrentState {
     strandedFiles: (json['strandedFiles'] as num?)?.toInt() ?? 0,
     playable: json['playable'] as bool? ?? false,
     videoCount: (json['videoCount'] as num?)?.toInt() ?? 0,
+    error: (json['error'] as num?)?.toInt() ?? 0,
+    errorString: json['errorString'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -145,5 +159,7 @@ class TorrentState {
     'strandedFiles': strandedFiles,
     'playable': playable,
     'videoCount': videoCount,
+    'error': error,
+    'errorString': errorString,
   };
 }
